@@ -1,0 +1,13 @@
+fastapi==0.103.2
+uvicorn==0.23.2
+pandas==2.1.1
+openpyxl
+numpy==1.26.0
+SQLAlchemy==2.0.21
+PyMySQL==1.1.0
+python-dotenv==1.0.0
+python-multipart==0.0.6
+google-genai
+google-generativeai
+xlrd==2.0.1
+lxml

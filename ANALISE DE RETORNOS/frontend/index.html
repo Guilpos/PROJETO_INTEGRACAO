@@ -1,0 +1,3033 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Análise de Retornos</title>
+    <!-- Importação do Bootstrap 5 para um visual corporativo instantâneo -->
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <!-- Coloque no <head> -->
+    <link
+      href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.bootstrap5.min.css"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script>
+      /* Aplica o tema salvo (ou o do sistema) ANTES de pintar a tela, evitando "flash" branco */
+      (function () {
+        var salvo = null;
+        try {
+          salvo = localStorage.getItem("tema-dashboard");
+        } catch (e) {}
+        var tema =
+          salvo ||
+          (window.matchMedia &&
+          window.matchMedia("(prefers-color-scheme: dark)").matches
+            ? "dark"
+            : "light");
+        document.documentElement.setAttribute("data-theme", tema);
+      })();
+    </script>
+    <style>
+      /* =====================================================
+         PALETAS DE TEMA (única fonte de verdade das cores)
+         Tema claro = valores originais do seu sistema
+         ===================================================== */
+      :root {
+        --bg-area: #f4f6f9;
+        --bg-lateral: #9b59b6;
+        --bg-direita: #d2c9eb;
+        --card-lateral: #ffffff;
+        --card-grafico: #ffffff; /* cards que contêm os gráficos */
+        --card-resumo: #f4f6f9; /* caixa interna com os valores R$ */
+        --borda-card: transparent;
+        --sombra-card: 0 4px 6px rgba(0, 0, 0, 0.1);
+        --texto-1: #2c3e50;
+        --texto-2: #555555;
+        --texto-3: #888888;
+        --texto-4: #7f8c8d;
+        --linha: #cccccc;
+        --accent: #00aced;
+        --input-bg: #ffffff;
+        --input-borda: #00aced;
+        --input-arquivo-bg: #ecf0f1;
+        --input-arquivo-borda: #7f8c8d;
+        --resizer: #e0e0e0;
+        --grade-grafico: rgba(0, 0, 0, 0.1);
+        --texto-grafico: #666666;
+
+        /* Status (pizza, legenda, tendência) */
+        --cor-integral: #2ea44f;
+        --cor-parcial: #f39c12;
+        --cor-rejeitado: #e74c3c;
+        --cor-outros: #95a5a6;
+        --cor-tendencia-rej: #d73a49;
+        --cor-barras: #3498db;
+        --cor-positivo: #2ecc71;
+        --cor-negativo: #e74c3c;
+        --btn-buscar: #3498db;
+        --btn-buscar-h: #2980b9;
+        --btn-upload: #2ecc71;
+        --btn-upload-h: #27ae60;
+        --btn-excluir: #e74c3c;
+        --btn-excluir-h: #c0392b;
+      }
+
+      [data-theme="dark"] {
+        color-scheme: dark; /* scrollbars, calendário do input month e ícones nativos escuros */
+        --bg-area: #0f172a;
+        --bg-lateral: linear-gradient(180deg, #0b1020 0%, #1e1b4b 100%);
+        --bg-direita: #0b1220;
+        --card-lateral: #1e293b;
+        --card-grafico: #1e293b; /* cor própria para os cards dos gráficos */
+        --card-resumo: #162033;
+        --borda-card: #2d3b55;
+        --sombra-card: 0 6px 18px rgba(0, 0, 0, 0.45);
+        --texto-1: #e2e8f0;
+        --texto-2: #cbd5e1;
+        --texto-3: #94a3b8;
+        --texto-4: #94a3b8;
+        --linha: #334155;
+        --accent: #818cf8;
+        --input-bg: #0f172a;
+        --input-borda: #475569;
+        --input-arquivo-bg: #0f172a;
+        --input-arquivo-borda: #475569;
+        --resizer: #1e293b;
+        --grade-grafico: rgba(148, 163, 184, 0.14);
+        --texto-grafico: #94a3b8;
+
+        --cor-integral: #34d399; /* esmeralda */
+        --cor-parcial: #fbbf24; /* âmbar */
+        --cor-rejeitado: #fb7185; /* coral/rosé */
+        --cor-outros: #64748b;
+        --cor-tendencia-rej: #fb7185;
+        --cor-barras: #818cf8; /* índigo claro */
+        --cor-positivo: #34d399;
+        --cor-negativo: #fb7185;
+        --btn-buscar: #4f46e5;
+        --btn-buscar-h: #6366f1;
+        --btn-upload: #059669;
+        --btn-upload-h: #10b981;
+        --btn-excluir: #be123c;
+        --btn-excluir-h: #e11d48;
+      }
+
+      body,
+      html {
+        transition:
+          background-color 0.3s ease,
+          color 0.3s ease;
+      }
+      body {
+        background: var(--bg-area);
+        color: var(--texto-1);
+      }
+
+      /* Botão alternador de tema */
+      #btn-tema {
+        position: fixed;
+        top: 14px;
+        right: 16px;
+        z-index: 10000;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 12px;
+        border-radius: 999px;
+        border: 1px solid var(--borda-card, #ccc);
+        background: var(--card-grafico);
+        color: var(--texto-1);
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        box-shadow: var(--sombra-card);
+        transition: all 0.3s ease;
+      }
+      #btn-tema:hover {
+        transform: translateY(-1px);
+      }
+      #btn-tema .trilho {
+        position: relative;
+        width: 36px;
+        height: 20px;
+        border-radius: 999px;
+        background: #cbd5e1;
+        transition: background 0.3s ease;
+      }
+      #btn-tema .bolinha {
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: #fff;
+        transition: transform 0.3s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+      }
+      [data-theme="dark"] #btn-tema .trilho {
+        background: #6366f1;
+      }
+      [data-theme="dark"] #btn-tema .bolinha {
+        transform: translateX(16px);
+      }
+
+      /* Sobras de componentes de terceiros (Tom Select / Bootstrap) no tema escuro */
+      [data-theme="dark"] .ts-wrapper .ts-control,
+      [data-theme="dark"] .ts-wrapper.single .ts-control,
+      [data-theme="dark"] .ts-wrapper.multi .ts-control {
+        background: var(--input-bg) !important;
+        border-color: var(--input-borda) !important;
+        color: var(--texto-1) !important;
+        box-shadow: none !important;
+      }
+      [data-theme="dark"] .ts-control input,
+      [data-theme="dark"] .ts-wrapper .ts-control > .item {
+        color: var(--texto-1) !important;
+      }
+      [data-theme="dark"] .ts-wrapper.multi .ts-control > div {
+        background: #312e81 !important;
+        color: #e0e7ff !important;
+        border: 0 !important;
+      }
+      [data-theme="dark"] .ts-dropdown,
+      [data-theme="dark"] .ts-dropdown.form-control {
+        background: #1e293b !important;
+        color: var(--texto-1) !important;
+        border: 1px solid var(--input-borda) !important;
+      }
+      [data-theme="dark"] .ts-dropdown .option {
+        color: var(--texto-2) !important;
+      }
+      [data-theme="dark"] .ts-dropdown .active,
+      [data-theme="dark"] .ts-dropdown .option:hover {
+        background: #312e81 !important;
+        color: #fff !important;
+      }
+      [data-theme="dark"] .form-check-input {
+        background-color: #334155;
+        border-color: #475569;
+      }
+      [data-theme="dark"] .form-check-input:checked {
+        background-color: #6366f1;
+        border-color: #6366f1;
+      }
+      [data-theme="dark"] .grupo-form input::placeholder {
+        color: var(--texto-3);
+      }
+      [data-theme="dark"] #btn-toggle-menu {
+        background: #4f46e5 !important;
+        border-color: #4f46e5 !important;
+      }
+      [data-theme="dark"] ::-webkit-scrollbar {
+        height: 10px;
+        width: 10px;
+      }
+      [data-theme="dark"] ::-webkit-scrollbar-track {
+        background: #0f172a;
+      }
+      [data-theme="dark"] ::-webkit-scrollbar-thumb {
+        background: #334155;
+        border-radius: 8px;
+      }
+    </style>
+    <style>
+      /* 1. Preparamos a barra original para aceitar animações */
+      .barra-esquerda {
+        transition: all 0.4s ease-in-out; /* Duração de 0.4 segundos com aceleração e desaceleração suave */
+        overflow-x: hidden; /* Impede que os botões e textos "vazem" enquanto a barra espreme */
+      }
+
+      /* 2. O novo estado oculto (Adeus, display: none!) */
+      .barra-esquerda.oculta {
+        min-width: 0 !important;
+        width: 0 !important;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+        opacity: 0;
+        border: none !important;
+      }
+      /* ESTILOS DA BARRA LATERAL (PAINEL DE CONTROLE) */
+      .card-lateral {
+        background-color: var(--card-lateral);
+        border: 1px solid var(--borda-card);
+        border-radius: 20px;
+        padding: 25px 20px;
+        box-shadow: var(--sombra-card);
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .titulo-lateral {
+        color: var(--accent);
+        text-align: center;
+        font-size: 16px;
+        margin: 0 0 15px 0;
+      }
+
+      .grupo-form label {
+        display: block;
+        font-size: 12px;
+        color: var(--texto-2);
+        margin-bottom: 4px;
+        font-weight: bold;
+        text-align: center;
+      }
+
+      .grupo-form input,
+      .grupo-form select {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid var(--input-borda);
+        border-radius: 4px;
+        box-sizing: border-box;
+        text-align: center;
+        color: var(--texto-1);
+        background-color: var(--input-bg);
+        cursor: pointer;
+      }
+
+      /* 1. Garante que o contêiner atue como Flexbox */
+      .ts-wrapper .ts-control {
+        display: flex !important;
+        align-items: center !important;
+      }
+
+      /* 2. A MÁGICA: O flex: 1 obriga a div do texto a esticar pela caixa inteira, ativando o centro */
+      .ts-wrapper .ts-control .item {
+        flex: 1 !important;
+        text-align: center !important;
+        display: block !important;
+      }
+
+      /* 3. Centraliza o texto enquanto o usuário digita a pesquisa */
+      .ts-wrapper .ts-control input {
+        text-align: center !important;
+      }
+
+      /* 4. BÔNUS: Centraliza também os convênios na lista quando ela é aberta para pesquisa */
+      .ts-dropdown .option {
+        text-align: center !important;
+      }
+
+      /* Campos de data lado a lado para o período */
+      .grupo-datas {
+        display: flex;
+        width: 50%;
+        gap: 10px;
+      }
+
+      /* Botões de Ação */
+      .btn-acao {
+        width: 100%;
+        padding: 12px;
+        border: none;
+        border-radius: 6px;
+        color: white;
+        font-weight: bold;
+        cursor: pointer;
+        transition: 0.2s;
+        margin-top: 5px;
+      }
+
+      .btn-buscar {
+        background-color: var(--btn-buscar);
+      }
+      .btn-buscar:hover {
+        background-color: var(--btn-buscar-h);
+      }
+
+      .btn-upload {
+        background-color: var(--btn-upload);
+      }
+      .btn-upload:hover {
+        background-color: var(--btn-upload-h);
+      }
+
+      .btn-excluir {
+        background-color: var(--btn-excluir);
+        margin-top: 15px;
+      }
+      .btn-excluir:hover {
+        background-color: var(--btn-excluir-h);
+      }
+
+      .divisor-linha {
+        border: 0;
+        border-top: 1px dashed var(--linha);
+        margin: 10px 0;
+      }
+      /* Zera as margens e faz a tela ocupar 100% da janela */
+      body,
+      html {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        font-family: sans-serif;
+      }
+
+      /* O contêiner pai que segura as 3 colunas */
+      .layout-principal {
+        display: flex;
+        height: 100vh;
+        overflow: hidden; /* Trava a rolagem da página inteira */
+      }
+
+      /* 1. BARRA ESQUERDA (Formulário) */
+      .barra-esquerda {
+        width: 400px;
+        background: var(--bg-lateral);
+        padding: 20px;
+        transition: 0.3s all ease; /* Animação para retrair */
+      }
+      /* Classe que será ativada via JavaScript para encolher o menu */
+      .barra-esquerda.recolhida {
+        width: 0;
+        padding: 0;
+        overflow: hidden;
+      }
+
+      /* 2. CENTRO (Scroll Horizontal com os Cards) */
+      .area-central {
+        flex: 1; /* Ocupa todo o espaço que sobrar */
+        background-color: var(--bg-area);
+        transition: background-color 0.3s ease;
+        padding: 20px;
+        gap: 20px;
+        overflow-x: auto; /* Cria a barra de rolagem horizontal */
+        align-items: flex-start;
+      }
+
+      .card-arquivo {
+        min-width: 890px; /* Aumentamos para caber a pizza e as barras com folga */
+        flex-shrink: 0; /* A MÁGICA: Impede que o cartão seja espremido quando houver muitos na tela */
+        background: var(--card-grafico);
+        border: 1px solid var(--borda-card);
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: var(--sombra-card);
+        transition:
+          background-color 0.3s ease,
+          border-color 0.3s ease;
+        display: flex;
+        flex-direction: column;
+      }
+
+      /* 3. BARRA DIREITA (Tendência e IA) */
+      #barra-direita {
+        width: 400px;
+        min-width: 400px;
+        background-color: var(--bg-direita);
+        padding: 60px 20px 20px 20px; /* espaço extra no topo para o botão de tema */
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+
+      #btn-toggle-menu {
+        /* ... seus outros estilos já existentes ... */
+        transition: left 0.3s ease-in-out; /* Garante o deslizamento suave */
+      }
+
+      /* Tamanho e trava da sua barra direita */
+      .sidebar {
+        width: 400px; /* Tamanho inicial padrão */
+        min-width: 300px; /* A TRAVA: Impede que o usuário diminua mais que o padrão */
+        background-color: var(--bg-direita);
+        overflow-x: hidden;
+      }
+
+      /* O estilo do puxador */
+      .resizer {
+        width: 6px;
+        cursor: ew-resize; /* Cursor de setinha dupla para os lados */
+        background-color: var(
+          --resizer
+        ); /* Uma cor sutil, pode colocar transparente se preferir */
+        transition: background-color 0.2s;
+      }
+
+      /* Dá um destaque visual quando o usuário passa o mouse por cima do puxador */
+      .resizer:hover,
+      .resizer.resizing {
+        background-color: #0d6efd; /* Azul do Bootstrap, por exemplo */
+      }
+    </style>
+    <style>
+      /* =====================================================
+         MODOS DE EXIBIÇÃO (botões segmentados Qtde | R$ | %)
+         ===================================================== */
+      :root {
+        --seg-bg: #e6eaf1;
+        --seg-txt: #5b6676;
+        --seg-ativo-bg: #ffffff;
+        --seg-ativo-txt: #1f2d3d;
+        --seg-sombra: 0 1px 3px rgba(0, 0, 0, 0.18);
+      }
+      [data-theme="dark"] {
+        --seg-bg: #0f172a;
+        --seg-txt: #94a3b8;
+        --seg-ativo-bg: #4f46e5;
+        --seg-ativo-txt: #ffffff;
+        --seg-sombra: none;
+      }
+      .seg {
+        display: inline-flex;
+        gap: 2px;
+        padding: 2px;
+        border-radius: 8px;
+        background: var(--seg-bg);
+        border: 1px solid var(--borda-card);
+        flex-shrink: 0;
+      }
+      .seg-btn {
+        border: 0;
+        background: transparent;
+        color: var(--seg-txt);
+        font-size: 11px;
+        font-weight: 600;
+        line-height: 1.4;
+        padding: 3px 10px;
+        border-radius: 6px;
+        cursor: pointer;
+        transition:
+          background 0.2s ease,
+          color 0.2s ease;
+      }
+      .seg-btn:hover:not(.ativo):not(:disabled) {
+        color: var(--texto-1);
+      }
+      .seg-btn.ativo {
+        background: var(--seg-ativo-bg);
+        color: var(--seg-ativo-txt);
+        box-shadow: var(--seg-sombra);
+      }
+      .seg-btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+
+      .controle-linha {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        width: 100%;
+        margin-bottom: 10px;
+      }
+      .rotulo-controle {
+        font-size: 11px;
+        color: var(--texto-4);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .resumo-card {
+        margin-top: 20px;
+        width: 100%;
+        padding: 15px;
+        border-radius: 8px;
+        background: var(--card-resumo);
+        border: 1px solid var(--borda-card);
+      }
+      .resumo-topo {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+      .cabecalho-tendencia {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      /* Painel "Exibição dos cards" (barra esquerda) */
+      .painel-exibicao {
+        background: rgba(255, 255, 255, 0.12);
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        border-radius: 12px;
+        padding: 12px 14px;
+        color: #fff;
+      }
+      .painel-exibicao-titulo {
+        font-size: 12px;
+        font-weight: 700;
+        text-align: center;
+        margin-bottom: 10px;
+        letter-spacing: 0.4px;
+      }
+      .painel-exibicao-linha {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 8px;
+        font-size: 12px;
+      }
+      .painel-exibicao small {
+        display: block;
+        text-align: center;
+        font-size: 10px;
+        opacity: 0.8;
+        margin-top: 4px;
+      }
+      .painel-exibicao .seg {
+        background: rgba(0, 0, 0, 0.25);
+        border-color: transparent;
+      }
+      .painel-exibicao .seg-btn {
+        color: rgba(255, 255, 255, 0.8);
+      }
+      .painel-exibicao .seg-btn:hover:not(.ativo):not(:disabled) {
+        color: #fff;
+      }
+      .painel-exibicao .seg-btn.ativo {
+        background: #fff;
+        color: #4c1d95;
+        box-shadow: none;
+      }
+      [data-theme="dark"] .painel-exibicao .seg-btn.ativo {
+        background: #4f46e5;
+        color: #fff;
+      }
+      /* Com o novo bloco "Exibição dos cards", o painel esquerdo pode passar da altura da tela */
+      .barra-esquerda {
+        overflow-y: auto;
+        box-sizing: border-box;
+      }
+    </style>
+    <style>
+      /* =====================================================
+         REGISTRO DE UPLOADS (painel que desliza sobre a barra de filtros)
+         ===================================================== */
+      :root {
+        --aviso-txt: #92400e;
+        --aviso-bg: rgba(245, 158, 11, 0.16);
+        --recente-txt: #047857;
+        --recente-bg: rgba(16, 185, 129, 0.16);
+      }
+      [data-theme="dark"] {
+        --aviso-txt: #fbbf24;
+        --aviso-bg: rgba(251, 191, 36, 0.14);
+        --recente-txt: #34d399;
+        --recente-bg: rgba(52, 211, 153, 0.14);
+      }
+
+      /* Os dois botões flutuantes andam juntos com a barra de filtros */
+      #botoes-flutuantes {
+        position: fixed;
+        bottom: 30px;
+        left: 420px;
+        z-index: 9999;
+        display: flex;
+        gap: 10px;
+        transition: left 0.3s ease;
+      }
+      .btn-flutuante {
+        border-radius: 50px;
+        padding: 10px 20px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+        transition: all 0.3s ease;
+        white-space: nowrap;
+      }
+      [data-theme="dark"] #btn-registro {
+        background: #4f46e5 !important;
+        border-color: #4f46e5 !important;
+      }
+      #btn-registro.ativo {
+        box-shadow:
+          0 0 0 3px rgba(129, 140, 248, 0.55),
+          0 4px 8px rgba(0, 0, 0, 0.3);
+      }
+
+      .painel-registro {
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        width: 400px;
+        z-index: 9000;
+        box-sizing: border-box;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        background: var(--bg-lateral);
+        color: #fff;
+        transform: translateX(-100%);
+        visibility: hidden;
+        transition:
+          transform 0.3s ease,
+          visibility 0s linear 0.3s;
+        box-shadow: 6px 0 24px rgba(0, 0, 0, 0.25);
+      }
+      .painel-registro.visivel {
+        transform: translateX(0);
+        visibility: visible;
+        transition:
+          transform 0.3s ease,
+          visibility 0s;
+      }
+      .reg-topo {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .reg-titulo {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 700;
+      }
+      .reg-sub {
+        margin: 2px 0 0;
+        font-size: 11px;
+        opacity: 0.8;
+      }
+      .reg-voltar {
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        background: rgba(255, 255, 255, 0.12);
+        color: #fff;
+        font-size: 12px;
+        font-weight: 600;
+        padding: 5px 12px;
+        border-radius: 999px;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .reg-voltar:hover {
+        background: rgba(255, 255, 255, 0.22);
+      }
+      .reg-busca {
+        position: relative;
+      }
+      .reg-busca input {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 9px 32px 9px 12px;
+        border-radius: 10px;
+        border: 1px solid var(--input-borda);
+        background: var(--input-bg);
+        color: var(--texto-1);
+        font-size: 13px;
+        outline: none;
+      }
+      .reg-busca input:focus {
+        box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.45);
+      }
+      .reg-busca button {
+        position: absolute;
+        right: 6px;
+        top: 50%;
+        transform: translateY(-50%);
+        border: 0;
+        background: transparent;
+        color: var(--texto-3);
+        font-size: 16px;
+        cursor: pointer;
+        line-height: 1;
+      }
+      .reg-contagem {
+        font-size: 11px;
+        opacity: 0.85;
+        min-height: 14px;
+      }
+      .reg-lista {
+        flex: 1;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding-right: 2px;
+      }
+      .reg-item {
+        background: var(--card-lateral);
+        color: var(--texto-1);
+        border: 1px solid var(--borda-card);
+        border-radius: 12px;
+        padding: 10px 12px;
+        cursor: pointer;
+        text-align: left;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+        transition:
+          transform 0.15s ease,
+          box-shadow 0.15s ease;
+      }
+      .reg-item:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 6px 14px rgba(0, 0, 0, 0.22);
+      }
+      .reg-item:focus-visible {
+        outline: 2px solid #818cf8;
+        outline-offset: 2px;
+      }
+      .reg-linha1 {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .reg-conv {
+        font-size: 13px;
+        font-weight: 700;
+        line-height: 1.25;
+        word-break: break-word;
+      }
+      .reg-comp {
+        flex-shrink: 0;
+        font-size: 11px;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: var(--accent);
+        color: #fff;
+      }
+      [data-theme="dark"] .reg-comp {
+        background: #4f46e5;
+      }
+      .reg-linha2 {
+        font-size: 12px;
+        color: var(--texto-2);
+        margin-top: 3px;
+      }
+      .reg-arquivo {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 6px;
+        font-size: 11px;
+        color: var(--texto-3);
+        min-width: 0;
+      }
+      .reg-arquivo .nome {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        min-width: 0;
+        flex: 1;
+      }
+      .reg-chip {
+        flex-shrink: 0;
+        border: 0;
+        font-size: 10px;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: var(--seg-bg);
+        color: var(--texto-2);
+        cursor: pointer;
+      }
+      .reg-chip:hover {
+        filter: brightness(0.95);
+      }
+      .reg-expandido {
+        margin: 6px 0 0;
+        padding: 6px 8px;
+        list-style: none;
+        border-radius: 8px;
+        background: var(--card-resumo);
+        font-size: 11px;
+        color: var(--texto-2);
+      }
+      .reg-expandido li {
+        padding: 2px 0;
+        word-break: break-all;
+      }
+      .reg-expandido li.diverge {
+        color: var(--aviso-txt);
+        font-weight: 600;
+      }
+      .reg-rodape {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        margin-top: 8px;
+        font-size: 11px;
+        color: var(--texto-3);
+      }
+      .reg-selo {
+        font-size: 10px;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 999px;
+      }
+      .reg-selo.recente {
+        background: var(--recente-bg);
+        color: var(--recente-txt);
+      }
+      .reg-selo.aviso {
+        background: var(--aviso-bg);
+        color: var(--aviso-txt);
+      }
+      .reg-estado {
+        text-align: center;
+        font-size: 13px;
+        opacity: 0.9;
+        padding: 30px 10px;
+      }
+      .reg-mais {
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        background: rgba(255, 255, 255, 0.12);
+        color: #fff;
+        border-radius: 10px;
+        padding: 8px;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      .reg-aviso-topo {
+        display: none;
+        font-size: 12px;
+        padding: 8px 10px;
+        border-radius: 8px;
+        background: var(--aviso-bg);
+        color: #fff;
+        border: 1px solid rgba(251, 191, 36, 0.5);
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Novo Botão Flutuante Fixo -->
+    <!-- BOTÃO DE ALTERNAR TEMA (claro/escuro) -->
+    <button
+      id="btn-tema"
+      type="button"
+      title="Alternar entre modo claro e escuro"
+      aria-label="Alternar tema"
+    >
+      <span id="tema-icone-sol">☀️</span>
+      <span class="trilho"
+        ><span class="bolinha" id="tema-bolinha"></span
+      ></span>
+      <span id="tema-icone-lua">🌙</span>
+    </button>
+
+    <!-- Novo Botão Flutuante Fixo -->
+    <div id="botoes-flutuantes">
+      <button
+        id="btn-toggle-menu"
+        type="button"
+        class="btn btn-dark btn-flutuante"
+      >
+        <span id="icone-menu">◀</span>
+        <span style="font-size: 14px">Filtros</span>
+      </button>
+      <button
+        id="btn-registro"
+        type="button"
+        class="btn btn-dark btn-flutuante"
+        aria-expanded="false"
+        aria-controls="painel-registro"
+      >
+        <span>🕘</span>
+        <span style="font-size: 14px">Registro de Uploads</span>
+      </button>
+    </div>
+
+    <!-- PAINEL "REGISTRO DE UPLOADS": desliza da esquerda para a direita, por cima da barra de filtros -->
+    <section
+      id="painel-registro"
+      class="painel-registro"
+      aria-hidden="true"
+      aria-label="Registro de Uploads"
+    >
+      <div class="reg-topo">
+        <div>
+          <h3 class="reg-titulo">Registro de Uploads</h3>
+          <p class="reg-sub">
+            Confira os filtros usados em cada envio. Clique numa linha para
+            filtrá-la.
+          </p>
+        </div>
+        <button type="button" id="reg-voltar" class="reg-voltar">
+          ← Filtros
+        </button>
+      </div>
+      <div class="reg-busca">
+        <input
+          id="reg-busca"
+          type="search"
+          autocomplete="off"
+          placeholder="Código, convênio, banco, produto, arquivo ou competência"
+          aria-label="Buscar no registro de uploads"
+        />
+        <button
+          type="button"
+          id="reg-limpar"
+          aria-label="Limpar busca"
+          style="display: none"
+        >
+          ×
+        </button>
+      </div>
+      <div class="reg-contagem" id="reg-contagem"></div>
+      <div class="reg-aviso-topo" id="reg-aviso"></div>
+      <div class="reg-lista" id="reg-lista"></div>
+    </section>
+
+    <div class="layout-principal">
+      <!-- BARRA ESQUERDA -->
+      <aside class="barra-esquerda" id="menu-lateral">
+        <div class="card-lateral">
+          <h3 class="titulo-lateral">Painel de Controle</h3>
+
+          <!-- PARÂMETROS GERAIS (Usados para Buscar, Upload e Excluir) -->
+          <div class="grupo-form">
+            <label>Código do Convênio</label>
+            <select id="codigo_convenio" class="form-select" multiple>
+              <option value="">-- Selecione --</option>
+              <option value="1">1 - INSS</option>
+              <option value="2">2 - GOV. PARAÍBA</option>
+              <option value="3">3 - GOV. MINAS GERAIS - IPSM</option>
+              <option value="4">4 - GOV. MINAS GERAIS - CBMMG</option>
+              <option value="5">5 - GOV. MINAS GERAIS - PMMG</option>
+              <option value="6">6 - GOV. MINAS GERAIS - SEPLAG</option>
+              <option value="7">7 - GOV. MINAS GERAIS - IPSEMG</option>
+              <option value="8">8 - GOV. BAHIA</option>
+              <option value="9">9 - PREF. ARAGUAÍNA</option>
+              <option value="10">10 - PREF. DUQUE DE CAXIAS</option>
+              <option value="11">11 - PREF. DUQUE DE CAXIAS - COTAR</option>
+              <option value="12">12 - PREF. DUQUE DE CAXIAS - IMPDC</option>
+              <option value="13">13 - PREF. GOIÂNIA</option>
+              <option value="14">14 - PREVIDÊNCIA SÃO GONÇALO</option>
+              <option value="15">15 - PREF. RIBEIRÃO PRETO</option>
+              <option value="16">16 - PREF. TABOÃO DA SERRA</option>
+              <option value="17">17 - PREVIDÊNCIA SANTOS - IPREV</option>
+              <option value="18">18 - GOV. ESPÍRITO SANTO</option>
+              <option value="19">19 - GOV. PARANÁ</option>
+              <option value="20">20 - GOV. RIO DE JANEIRO</option>
+              <option value="21">21 - IGEPREV</option>
+              <option value="22">22 - PREF. BELO HORIZONTE</option>
+              <option value="23">23 - PREF. AÇAILÂNDIA</option>
+              <option value="24">24 - PREF. CAMPINAS</option>
+              <option value="25">25 - PREF. MACAÉ</option>
+              <option value="26">26 - PREF. SÃO JOSE DE RIBAMAR</option>
+              <option value="27">27 - PREF. SÃO PAULO-HMSP</option>
+              <option value="28">28 - PREF. SOBRAL</option>
+              <option value="29">29 - PREVIPALMAS</option>
+              <option value="30">30 - PREF. BARBACENA</option>
+              <option value="31">31 - GOV. ALAGOAS - TJAL</option>
+              <option value="32">32 - PREF. ANANINDEUA</option>
+              <option value="33">33 - PREF. ÁGUAS LINDAS DE GOIÁS</option>
+              <option value="34">34 - PREF. PIRACICABA</option>
+              <option value="35">35 - PREF. FLORIANÓPOLIS</option>
+              <option value="36">36 - PREF. PIRACICABA-SEMAE</option>
+              <option value="37">37 - PREV. PIRACICABA IPASP</option>
+              <option value="38">38 - IGEPREV - ADIANTAMENTO</option>
+              <option value="39">39 - GOV. SANTA CATARINA</option>
+              <option value="40">40 - PREF. CONTAGEM</option>
+              <option value="41">41 - PREF. PLANALTINA DE GOIÁS</option>
+              <option value="42">42 - PREF. SÃO PAULO</option>
+              <option value="42.1">42.1 - PREF. SÃO PAULO - PMSP</option>
+              <option value="42.2">
+                42.2 - PREF. SÃO PAULO - IPREM PENSIONSTAS
+              </option>
+              <option value="42.3">42.3 - PREF. SÃO PAULO - IPREM</option>
+              <option value="42.4">
+                42.4 - PREF. SÃO PAULO - IPREM APOSENTADOS
+              </option>
+              <option value="43">43 - GOV. SÃO PAULO</option>
+              <option value="43.1">43.1 - GOV. SÃO PAULO - PMESP</option>
+              <option value="43.2">43.2 - GOV. SÃO PAULO - SPPREV</option>
+              <option value="44">44 - GOV. GOIÁS</option>
+              <option value="45">45 - PREF. SÃO GONÇALO</option>
+              <option value="46">46 - PREF. SÃO LUÍS</option>
+              <option value="47">47 - PREF. SOROCABA</option>
+              <option value="48">48 - PREF. SÃO JOSÉ DO RIO PRETO</option>
+              <option value="49">49 - PREVIDÊNCIA SÃO JOSÉ DO RIO PRETO</option>
+              <option value="50">50 - CÂMARA MUNICIPAL DE TERESÓPOLIS</option>
+              <option value="51">51 - PREF. JUÍZ DE FORA</option>
+              <option value="52">52 - PREF. RIO DE JANEIRO</option>
+              <option value="53">53 - PREF. PICOS</option>
+              <option value="54">54 - PREV. PICOS</option>
+              <option value="55">55 - PREF. TAUBATÉ</option>
+              <option value="56">56 - PREF. SANTOS</option>
+              <option value="57">57 - GOV. CEARÁ</option>
+              <option value="58">58 - GOV. ALAGOAS</option>
+              <option value="59">59 - GOV. MARANHÃO</option>
+              <option value="60">60 - GOV. MATO GROSSO</option>
+              <option value="61">61 - GOV. PIAUÍ</option>
+              <option value="62">62 - GOV. PERNAMBUCO</option>
+              <option value="63">63 - PREF. BAYEUX</option>
+              <option value="64">64 - PREF. CAJAMAR</option>
+              <option value="65">65 - PREF. CAMPINA GRANDE</option>
+              <option value="66">66 - PREF. CAMPO GRANDE</option>
+              <option value="67">67 - PREF. CUIABÁ</option>
+              <option value="68">68 - PREF. PORTO VELHO</option>
+              <option value="69">69 - PREF. IMPERATRIZ MA</option>
+              <option value="70">70 - PREF. ITU</option>
+              <option value="71">71 - PREF. JOÃO PESSOA</option>
+              <option value="72">72 - PREF. JUAZEIRO DO NORTE</option>
+              <option value="73">73 - PREF. MARABÁ</option>
+              <option value="74">74 - PREF. NITERÓI</option>
+              <option value="75">75 - PREF. PAÇO DO LUMIAR</option>
+              <option value="76">76 - PREF. PALMAS</option>
+              <option value="77">77 - PREF. RECIFE</option>
+              <option value="78">78 - PREF. SANTA RITA</option>
+              <option value="79">79 - PREF. TERESINA</option>
+              <option value="80">80 - CÂMARA DE TERESÓPOLIS</option>
+              <option value="81">81 - GOV. RIO GRANDE DO NORTE</option>
+              <option value="82">82 - PREF. NATAL</option>
+              <option value="83">83 - PREF. SERRA</option>
+              <option value="84">84 - PREF. CAUCAIA</option>
+              <option value="85">85 - PREF. VÁRZEA GRANDE</option>
+              <option value="86">86 - PREF. UBERABA</option>
+              <option value="87">87 - GOV. TOCANTINS</option>
+              <option value="88">88 - PREF. BAURU</option>
+              <option value="89">89 - PREF. ARARAQUARA</option>
+              <option value="90">90 - PREF. ARAPONGAS</option>
+            </select>
+          </div>
+
+          <div class="grupo-form">
+            <label>Consignatária (Banco)</label>
+            <select id="consignataria">
+              <option value="">-- Selecione --</option>
+              <option value="CAPITAL_CONSIG">Capital Consig</option>
+              <option value="CIASPREV">Ciasprev</option>
+              <option value="CLICKBANK">Clickbank</option>
+              <option value="HOJE_PREVIDENCIA">Hoje Previdência</option>
+              <option value="BEM_CARTOES">Bem Cartões</option>
+              <option value="CARTOS">Cartos</option>
+              <option value="ABCCARD">Abcard Cartões LTDA</option>
+              <option value="INSPFEM">Inspfem</option>
+            </select>
+          </div>
+
+          <div class="grupo-form">
+            <label>Produto</label>
+            <select id="produto">
+              <option value="">-- Selecione --</option>
+              <option value="EMPRESTIMO">Empréstimo</option>
+              <option value="CARTAO_CREDITO">Cartão de Crédito</option>
+              <option value="CARTAO_BENEFICIO">Cartão Benefício Compra</option>
+              <option value="CARTAO_SAQUE">Cartão Benefício Saque</option>
+            </select>
+          </div>
+
+          <div class="grupo-form">
+            <label>Período (Competência)</label>
+            <div class="grupo-datas">
+              <!-- Data Inicial -->
+              <input
+                type="month"
+                id="competencia_inicio"
+                title="Competência Inicial"
+              />
+              <!-- Data Final (Opcional) -->
+              <input
+                type="month"
+                id="competencia_fim"
+                title="Competência Final (Opcional)"
+              />
+            </div>
+            <small
+              style="
+                display: block;
+                text-align: center;
+                font-size: 10px;
+                color: var(--texto-3);
+                margin-top: 4px;
+              "
+              >Deixe a data final vazia para ver apenas 1 mês</small
+            >
+          </div>
+        </div>
+
+        <hr class="divisor-linha" />
+
+        <!-- 1º BOTÃO: APENAS BUSCAR (Filtro) -->
+        <button id="btn-buscar" class="btn-acao btn-buscar">
+          🔍 Filtrar Relatórios
+        </button>
+
+        <hr class="divisor-linha" />
+
+        <!-- EXIBIÇÃO DOS CARDS: altera todos os cards de uma vez -->
+        <div class="painel-exibicao">
+          <div class="painel-exibicao-titulo">Exibição dos cards</div>
+          <div class="painel-exibicao-linha">
+            <span>Rosquinha</span>
+            <div class="seg" data-escopo="global" data-chave="pizza">
+              <button
+                type="button"
+                class="seg-btn"
+                data-valor="qtd"
+                title="Mostrar quantidade de casos"
+              >
+                Qtde</button
+              ><button
+                type="button"
+                class="seg-btn"
+                data-valor="valor"
+                title="Mostrar valores monetários"
+              >
+                R$
+              </button>
+            </div>
+          </div>
+          <div class="painel-exibicao-linha">
+            <span>Barras</span>
+            <div class="seg" data-escopo="global" data-chave="barras">
+              <button
+                type="button"
+                class="seg-btn"
+                data-valor="qtd"
+                title="Mostrar quantidade de casos"
+              >
+                Qtde</button
+              ><button
+                type="button"
+                class="seg-btn"
+                data-valor="valor"
+                title="Mostrar valores monetários"
+              >
+                R$
+              </button>
+            </div>
+          </div>
+          <div class="painel-exibicao-linha">
+            <span>Variação (% / Δ)</span>
+            <div class="seg" data-escopo="global" data-chave="variacao">
+              <button
+                type="button"
+                class="seg-btn"
+                data-valor="pct"
+                title="Variação em percentual"
+              >
+                %</button
+              ><button
+                type="button"
+                class="seg-btn"
+                data-valor="abs"
+                title="Diferença direta (em casos ou em R$, conforme a rosquinha)"
+              >
+                Δ
+              </button>
+            </div>
+          </div>
+          <small
+            >Vale para todos os cards. Cada card também tem seus próprios
+            botões.</small
+          >
+        </div>
+
+        <hr class="divisor-linha" />
+
+        <!-- 2º BOTÃO: UPLOAD DE NOVO ARQUIVO -->
+        <div class="grupo-form" style="margin-top: 5px">
+          <label>Arquivo de Retorno (.csv, .xlsx)</label>
+          <input
+            type="file"
+            id="arquivo"
+            multiple
+            style="
+              border: 1px solid var(--input-arquivo-borda);
+              background: var(--input-arquivo-bg);
+              color: var(--texto-2);
+            "
+          />
+        </div>
+        <button id="btn-enviar" class="btn-acao btn-upload">
+          ⬆️ Processar Arquivo
+        </button>
+
+        <!-- 3º BOTÃO: EXCLUSÃO DE LOTE (Perigo) -->
+        <button id="btn-excluir" class="btn-acao btn-excluir">
+          🗑️ Excluir Lote
+        </button>
+
+        <!-- Alerta de Status -->
+        <div
+          id="mensagem-alerta"
+          style="
+            display: none;
+            font-size: 12px;
+            text-align: center;
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 4px;
+          "
+        ></div>
+      </aside>
+
+      <!-- ÁREA CENTRAL -->
+      <main class="area-central" style="padding: 20px; position: relative">
+        <!-- A sua div area-cards continua aqui embaixo -->
+        <div id="area-cards" style="display: flex; gap: 20px"></div>
+      </main>
+
+      <!-- O NOVO PUXADOR -->
+      <div id="redimensionador" class="resizer"></div>
+
+      <!-- BARRA DIREITA -->
+      <aside id="barra-direita">
+        <div class="cabecalho-tendencia">
+          <h4 style="color: var(--texto-2); margin: 0">
+            Tendência (Mês a Mês)
+          </h4>
+          <div class="seg" data-escopo="tendencia" data-chave="tendencia">
+            <button
+              type="button"
+              class="seg-btn"
+              data-valor="qtd"
+              title="Mostrar quantidade de casos"
+            >
+              Qtde</button
+            ><button
+              type="button"
+              class="seg-btn"
+              data-valor="valor"
+              title="Mostrar valores monetários"
+            >
+              R$
+            </button>
+          </div>
+        </div>
+
+        <!-- Esta DIV é a "jaula" que vai segurar o tamanho do gráfico -->
+        <div
+          style="
+            background-color: var(--card-grafico);
+            border: 1px solid var(--borda-card);
+            border-radius: 20px;
+            padding: 15px;
+            height: 300px;
+            box-shadow: var(--sombra-card);
+          "
+        >
+          <canvas id="chartTendencia"></canvas>
+        </div>
+
+        <!-- O espaço reservado para o resumo da IA que faremos a seguir -->
+        <!-- Título com Switch de Ativação -->
+        <div
+          style="
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 20px;
+            margin-bottom: 5px;
+          "
+        >
+          <h4 style="text-align: center; color: var(--texto-2); margin: 0">
+            Insight da IA
+          </h4>
+
+          <div class="form-check form-switch" style="margin: 0">
+            <input
+              class="form-check-input"
+              type="checkbox"
+              id="toggle-ia"
+              unchecked
+              style="cursor: pointer"
+            />
+            <label
+              class="form-check-label"
+              for="toggle-ia"
+              style="font-size: 11px; color: var(--texto-3); cursor: pointer"
+              >Ativar</label
+            >
+          </div>
+        </div>
+
+        <!-- A div caixa-ia continua igual -->
+        <div
+          id="caixa-ia"
+          style="
+            background-color: var(--card-grafico);
+            border: 1px solid var(--borda-card);
+            border-radius: 20px;
+            padding: 20px;
+            flex: 1;
+            box-shadow: var(--sombra-card);
+            overflow-y: auto;
+          "
+        >
+          <p
+            style="
+              color: var(--texto-3);
+              text-align: center;
+              font-size: 14px;
+              margin-top: 50px;
+            "
+          >
+            A inteligência artificial irá gerar o resumo aqui...
+          </p>
+        </div>
+        <p
+          style="
+            color: var(--texto-3);
+            text-align: center;
+            font-size: 14px;
+            margin-top: 50px;
+          "
+        ></p>
+      </aside>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
+
+    <script>
+      document.addEventListener("DOMContentLoaded", function () {
+        // Transforma o select normal em um select pesquisável
+        new TomSelect("#codigo_convenio", {
+          create: false,
+          placeholder: "-- Selecione ou digite para buscar --",
+          maxOptions: null,
+        });
+      });
+    </script>
+  </body>
+  <!-- O MOTOR: Aqui é onde o JavaScript puro faz a comunicação com o FastAPI -->
+  <script>
+    // 1. "Capturamos" os elementos que sobraram no novo layout
+    const btnEnviar = document.getElementById("btn-enviar");
+    const caixaAlerta = document.getElementById("mensagem-alerta");
+
+    // Função auxiliar atualizada para exibir a caixa de aviso no novo design
+    function mostrarAlerta(mensagem, corFundo) {
+      caixaAlerta.style.backgroundColor = corFundo;
+      caixaAlerta.style.color = "white";
+      caixaAlerta.textContent = mensagem;
+      caixaAlerta.style.display = "block";
+    }
+
+    // 2. Interceptamos o clique direto no botão de Upload
+    btnEnviar.addEventListener("click", async function () {
+      const inputArquivo = document.getElementById("arquivo");
+
+      // 1. Trava de segurança: verifica a quantidade de arquivos (length)
+      if (inputArquivo.files.length === 0) {
+        mostrarAlerta(
+          "Por favor, anexe um arquivo antes de processar.",
+          "#e74c3c",
+        ); // Vermelho
+        return;
+      }
+
+      // Altera o estado do botão para "Processando"
+      const textoOriginal = btnEnviar.textContent;
+      btnEnviar.textContent = "Processando...";
+      btnEnviar.disabled = true;
+      caixaAlerta.style.display = "none"; // Esconde mensagens anteriores
+
+      // 2. Cria o pacote ÚNICO de dados
+      const dadosFormulario = new FormData();
+
+      // Anexa os campos de texto
+      dadosFormulario.append(
+        "codigo_convenio",
+        document.getElementById("codigo_convenio").value,
+      );
+      dadosFormulario.append(
+        "consignataria",
+        document.getElementById("consignataria").value,
+      );
+      dadosFormulario.append(
+        "produto",
+        document.getElementById("produto").value,
+      );
+      dadosFormulario.append(
+        "competencia",
+        document.getElementById("competencia_inicio").value,
+      );
+
+      // 3. AQUI ESTÁ A MÁGICA: O loop substitui a antiga linha do arquivoFisico
+      for (let i = 0; i < inputArquivo.files.length; i++) {
+        // Atenção: Use "arquivos" (plural) ou "arquivo" (singular) dependendo
+        // de como você nomeou o parâmetro lá na sua rota do FastAPI.
+        dadosFormulario.append("arquivos", inputArquivo.files[i]);
+      }
+
+      // ... A partir daqui vem o seu comando fetch(url, { body: dadosFormulario }) ...
+
+      try {
+        // 4. Mandamos os dados para a nuvem
+        const resposta = await fetch(`${API_URL}/api/upload`, {
+          method: "POST",
+          body: dadosFormulario,
+        });
+
+        if (resposta.ok) {
+          mostrarAlerta("Upload concluído com sucesso!", "#2ecc71"); // Verde
+          inputArquivo.value = ""; // Limpa o campo do arquivo após sucesso
+          carregarDashboard(); // Atualiza os gráficos sozinhos
+          if (typeof registroMarcarDesatualizado === "function")
+            registroMarcarDesatualizado();
+        } else {
+          // Se não for OK (400, 404, 409, 500, etc)
+          let mensagemErro = "Ocorreu um erro ao processar o arquivo.";
+          try {
+            const erroJson = await resposta.json();
+            if (erroJson.detail) {
+              mensagemErro = erroJson.detail; // Captura o Lote Duplicado
+            }
+          } catch (e) {}
+
+          // Mostra o alerta na tela
+          mostrarAlerta(mensagemErro, "#e74c3c"); // Vermelho
+
+          // Removida a restauração do botão daqui, pois o 'finally' já faz isso!
+          return;
+        }
+      } catch (erro) {
+        console.error("Erro no upload:", erro);
+        mostrarAlerta("Erro de conexão com a API.", "#e74c3c");
+      } finally {
+        // Devolve o botão ao estado original independente do resultado (sucesso ou falha)
+        if (btnEnviar) {
+          btnEnviar.textContent = textoOriginal;
+          btnEnviar.disabled = false;
+        }
+      }
+    });
+    // Interceptamos o clique no botão de Excluir Lote
+    const btnExcluir = document.getElementById("btn-excluir");
+
+    btnExcluir.addEventListener("click", async function () {
+      // 1. Capturar os valores atuais dos filtros no painel lateral
+      const convenio = document.getElementById("codigo_convenio").value;
+      const consignataria = document.getElementById("consignataria").value;
+      const produto = document.getElementById("produto").value;
+      const compInicio = document.getElementById("competencia_inicio").value;
+
+      // 2. Trava de Segurança no Frontend: Exige preenchimento total
+      if (!convenio || !consignataria || !produto || !compInicio) {
+        mostrarAlerta(
+          "Preencha Convênio, Consignatária, Produto e Competência Inicial para excluir.",
+          "#f39c12",
+        ); // Laranja
+        return; // Cancela a execução
+      }
+
+      // 3. Confirmação Dupla (Evita cliques acidentais)
+      const mensagemConfirmacao = `ATENÇÃO! Isso apagará permanentemente todos os registros com os seguintes parâmetros:\n\nConvênio: ${convenio}\nBanco: ${consignataria}\nProduto: ${produto}\nCompetência: ${compInicio}\n\nDeseja realmente continuar?`;
+
+      if (!confirm(mensagemConfirmacao)) {
+        return; // Se o usuário clicar em "Cancelar", a função morre aqui.
+      }
+
+      // Altera o estado do botão visualmente
+      const textoOriginal = btnExcluir.textContent;
+      btnExcluir.textContent = "Excluindo...";
+      btnExcluir.disabled = true;
+      caixaAlerta.style.display = "none"; // Esconde mensagens anteriores
+
+      try {
+        // 4. Montar a URL com os parâmetros exatos para a API (com suporte a listas)
+        const parametros = new URLSearchParams();
+
+        // Se 'convenio' for um array (múltiplos selecionados), fazemos um loop para adicionar cada um
+        if (Array.isArray(convenio)) {
+          convenio.forEach((cod) => parametros.append("codigo_convenio", cod));
+        } else if (convenio) {
+          // Fallback caso venha como texto único
+          parametros.append("codigo_convenio", convenio);
+        }
+
+        if (consignataria) parametros.append("consignataria", consignataria);
+        if (produto) parametros.append("produto", produto);
+        if (compInicio) parametros.append("competencia_inicio", compInicio);
+
+        // 5. Disparar a requisição usando o método DELETE
+        const resposta = await fetch(
+          `${API_URL}/api/relatorios/arquivos/excluir-lote?${parametros.toString()}`,
+          {
+            method: "DELETE",
+          },
+        );
+
+        const dados = await resposta.json();
+
+        if (resposta.ok) {
+          if (dados.status === "sucesso") {
+            mostrarAlerta(dados.mensagem, "#2ecc71"); // Verde
+
+            // Recarrega o dashboard. Como os dados foram apagados, a tela ficará em branco e mostrará "Nenhum dado encontrado"
+            carregarDashboard();
+            if (typeof registroMarcarDesatualizado === "function")
+              registroMarcarDesatualizado();
+          } else {
+            // Caso o backend avise que não achou nada para apagar
+            mostrarAlerta(dados.mensagem, "#f39c12"); // Laranja
+          }
+        } else {
+          // Caso a API devolva o erro 400 da nossa trava de segurança do Python
+          mostrarAlerta(dados.detail || "Erro ao excluir o lote.", "#e74c3c"); // Vermelho
+        }
+      } catch (erro) {
+        console.error("Erro na exclusão:", erro);
+        mostrarAlerta("Erro de conexão com o servidor.", "#e74c3c");
+      } finally {
+        // Devolve o botão ao estado original independente do resultado
+        btnExcluir.textContent = textoOriginal;
+        btnExcluir.disabled = false;
+      }
+    });
+
+    // Intercepta o clique no botão Flutuante de Filtros
+    document
+      .getElementById("btn-toggle-menu")
+      .addEventListener("click", function () {
+        const barraEsquerda = document.querySelector(".barra-esquerda");
+        const iconeMenu = document.getElementById("icone-menu");
+        const botoes = document.getElementById("botoes-flutuantes"); // contêiner dos 2 botões
+
+        // Ativa ou desativa a classe que oculta a barra
+        barraEsquerda.classList.toggle("oculta");
+
+        // Os botões acompanham a barra: some a barra, vão para a esquerda; volta a barra, abrem espaço
+        if (barraEsquerda.classList.contains("oculta")) {
+          iconeMenu.textContent = "▶"; // Mostrar
+          botoes.style.left = "0px";
+        } else {
+          iconeMenu.textContent = "◀"; // Esconder
+          botoes.style.left = "420px";
+        }
+
+        // O painel de registro some e volta junto com a barra
+        if (typeof sincronizarPainelRegistro === "function")
+          sincronizarPainelRegistro();
+      });
+
+    // Função auxiliar para exibir a caixa de aviso verde ou vermelha
+    function mostrarAlerta(mensagem, tipo) {
+      caixaAlerta.className = `alert mt-4 alert-${tipo}`;
+      caixaAlerta.textContent = mensagem;
+      caixaAlerta.style.display = "block";
+    }
+
+    // Endereço base da sua API no Render
+    const API_URL = "https://api-validador-convenios.onrender.com";
+
+    // ===================== TEMA CLARO / ESCURO =====================
+    // Lê uma variável CSS do tema ativo (ex.: "--cor-integral") já resolvida como cor
+    function corTema(nomeVar) {
+      return getComputedStyle(document.documentElement)
+        .getPropertyValue(nomeVar)
+        .trim();
+    }
+
+    // Descobre a variável de cor de cada status. Usada na pizza, na legenda e na tendência
+    function chaveStatus(label) {
+      const texto = (label || "").toUpperCase();
+      if (texto.includes("ACATADO INTEGRAL") || texto === "ACATADO")
+        return "--cor-integral";
+      if (texto.includes("PARCIAL")) return "--cor-parcial";
+      if (texto.includes("ZERADO") || texto.includes("REJEITADO"))
+        return "--cor-rejeitado";
+      return "--cor-outros";
+    }
+
+    // Configura os padrões globais do Chart.js conforme o tema (texto, grades e borda da rosca)
+    function configurarPadroesChart() {
+      if (typeof Chart === "undefined") return;
+      Chart.defaults.color = corTema("--texto-grafico");
+      Chart.defaults.borderColor = corTema("--grade-grafico");
+      Chart.defaults.elements.arc.borderColor = corTema("--card-grafico");
+    }
+
+    // Repinta os gráficos JÁ desenhados, sem precisar buscar a API novamente
+    function repintarGraficos() {
+      if (typeof Chart === "undefined" || !Chart.instances) return;
+      configurarPadroesChart();
+
+      Object.values(Chart.instances).forEach((grafico) => {
+        const tipo = grafico.config.type;
+        const ds = grafico.data.datasets;
+
+        if (tipo === "doughnut" || tipo === "pie") {
+          ds[0].backgroundColor = grafico.data.labels.map((l) =>
+            corTema(chaveStatus(l)),
+          );
+        } else if (tipo === "bar") {
+          ds[0].backgroundColor = corTema("--cor-barras");
+          ds[0].borderRadius = 6;
+        } else if (tipo === "line") {
+          ds.forEach((d) => {
+            const cor =
+              d.label === "Acatado"
+                ? corTema("--cor-integral")
+                : d.label === "Parcial"
+                  ? corTema("--cor-parcial")
+                  : corTema("--cor-tendencia-rej");
+            d.borderColor = cor;
+            d.backgroundColor = cor + "22"; // transparência (hex 8 dígitos)
+            d.pointBackgroundColor = cor;
+          });
+        }
+        grafico.update();
+      });
+    }
+
+    function aplicarTema(tema) {
+      document.documentElement.setAttribute("data-theme", tema);
+      try {
+        localStorage.setItem("tema-dashboard", tema);
+      } catch (e) {}
+      const btn = document.getElementById("btn-tema");
+      if (btn) btn.setAttribute("aria-pressed", tema === "dark");
+      repintarGraficos();
+    }
+
+    document.getElementById("btn-tema").addEventListener("click", function () {
+      const atual = document.documentElement.getAttribute("data-theme");
+      aplicarTema(atual === "dark" ? "light" : "dark");
+    });
+
+    // Se o usuário NUNCA escolheu manualmente, acompanha mudanças do sistema operacional
+    if (window.matchMedia) {
+      window
+        .matchMedia("(prefers-color-scheme: dark)")
+        .addEventListener("change", (e) => {
+          let salvo = null;
+          try {
+            salvo = localStorage.getItem("tema-dashboard");
+          } catch (err) {}
+          if (!salvo) aplicarTema(e.matches ? "dark" : "light");
+        });
+    }
+    document.addEventListener("DOMContentLoaded", configurarPadroesChart);
+    // ===============================================================
+
+    // ===================== MODOS DE EXIBIÇÃO (Qtde / R$ / %) =====================
+    const CHAVE_MODOS = "modos-exibicao-dashboard";
+    const MODOS_VALIDOS = {
+      pizza: ["qtd", "valor"],
+      barras: ["qtd", "valor"],
+      variacao: ["pct", "abs"], // pct = percentual | abs = diferença direta (casos ou R$)
+      tendencia: ["qtd", "valor"],
+    };
+    // Estado "global" (painel esquerdo + tendência). Novos cards já nascem com ele.
+    const estadoGlobal = {
+      pizza: "qtd",
+      barras: "qtd",
+      variacao: "pct",
+      tendencia: "qtd",
+    };
+    try {
+      const salvo = JSON.parse(localStorage.getItem(CHAVE_MODOS) || "{}");
+      Object.keys(estadoGlobal).forEach((k) => {
+        if (MODOS_VALIDOS[k].includes(salvo[k])) estadoGlobal[k] = salvo[k];
+      });
+    } catch (e) {}
+    function salvarModos() {
+      try {
+        localStorage.setItem(CHAVE_MODOS, JSON.stringify(estadoGlobal));
+      } catch (e) {}
+    }
+
+    // Dados e estado de cada card, indexados por id_arquivo
+    const cardsDados = {}; // { id: { arquivo, anterior } }
+    const estadoCards = {}; // { id: { pizza, barras, variacao } }
+    const graficosCards = {}; // { id: { pizza: Chart, barras: Chart } }
+    let dadosTendencia = null;
+
+    // ---------- Formatadores ----------
+    const fmtBRL = (v) =>
+      (Number(v) || 0).toLocaleString("pt-BR", {
+        style: "currency",
+        currency: "BRL",
+      });
+    const fmtInt = (v) => (Number(v) || 0).toLocaleString("pt-BR");
+    const fmtCompacto = (v) => {
+      try {
+        return new Intl.NumberFormat("pt-BR", {
+          style: "currency",
+          currency: "BRL",
+          notation: "compact",
+          maximumFractionDigits: 1,
+        }).format(v);
+      } catch (e) {
+        return fmtBRL(v);
+      }
+    };
+    const somar = (arr) =>
+      (arr || []).reduce((a, b) => a + (Number(b) || 0), 0);
+    const pct1 = (parte, total) =>
+      total > 0 ? ((parte / total) * 100).toFixed(1).replace(".", ",") : "0,0";
+
+    function isAceito(label) {
+      const c = chaveStatus(label);
+      return c === "--cor-integral" || c === "--cor-parcial";
+    }
+
+    // Quebra textos longos para o Chart.js ler como múltiplas linhas
+    function formatarLabelMultiplasLinhas(texto, tamanhoMaximo = 20) {
+      if (!texto) return ["Não Informado"];
+      if (texto.length <= tamanhoMaximo) return texto;
+      const palavras = texto.split(" ");
+      const linhas = [];
+      let linhaAtual = "";
+      palavras.forEach((palavra) => {
+        if ((linhaAtual + palavra).length > tamanhoMaximo) {
+          if (linhaAtual.trim() !== "") linhas.push(linhaAtual.trim());
+          linhaAtual = palavra + " ";
+        } else {
+          linhaAtual += palavra + " ";
+        }
+      });
+      if (linhaAtual.trim() !== "") linhas.push(linhaAtual.trim());
+      return linhas;
+    }
+
+    // Variação (atual x anterior).
+    //   modo    : "pct" (percentual) ou "abs" (diferença direta)
+    //   unidade : "qtd" (casos) ou "valor" (R$)  -> formata a diferença direta
+    function tagVariacao(atual, anterior, modo, unidade) {
+      const est = (cor) => `font-size: 11px; color: ${cor}; margin-left: 5px;`;
+      const dica = `title="Variação em relação à competência anterior"`;
+      const fmt = unidade === "valor" ? fmtBRL : fmtInt;
+      if (anterior === undefined || anterior === null || isNaN(anterior)) {
+        return `<span style="${est("var(--texto-4)")}" ${dica}>(--)</span>`;
+      }
+      if (modo === "abs") {
+        const dif = atual - anterior;
+        if (Math.abs(dif) < 0.005)
+          return `<span style="${est("var(--texto-4)")}" ${dica}>(${fmt(0)})</span>`;
+        const cor = dif > 0 ? "var(--cor-positivo)" : "var(--cor-negativo)";
+        return `<span style="${est(cor)}" ${dica}>(${dif > 0 ? "+" : "-"}${fmt(Math.abs(dif))})</span>`;
+      }
+      if (anterior === 0) {
+        return atual > 0
+          ? `<span style="${est("var(--cor-positivo)")}" ${dica}>(+100,00%)</span>`
+          : `<span style="${est("var(--texto-4)")}" ${dica}>(0,00%)</span>`;
+      }
+      const diferenca = ((atual - anterior) / anterior) * 100;
+      const formatado = Math.abs(diferenca).toFixed(2).replace(".", ",");
+      if (diferenca > 0)
+        return `<span style="${est("var(--cor-positivo)")}" ${dica}>(+${formatado}%)</span>`;
+      if (diferenca < 0)
+        return `<span style="${est("var(--cor-negativo)")}" ${dica}>(-${formatado}%)</span>`;
+      return `<span style="${est("var(--texto-4)")}" ${dica}>(0,00%)</span>`;
+    }
+
+    // Valor financeiro de uma fatia do card anterior, localizada pelo NOME do status
+    // (e não pela posição, pois a ordem das fatias pode mudar de um mês para outro)
+    function valorPorLabel(grafico, label) {
+      const i = grafico.labels.indexOf(label);
+      return i >= 0 ? Number(grafico.valores_financeiros[i]) || 0 : 0;
+    }
+    function qtdPorLabel(grafico, label) {
+      const i = grafico.labels.indexOf(label);
+      return i >= 0 ? Number(grafico.quantidades[i]) || 0 : 0;
+    }
+    function somaAceitosQtd(grafico) {
+      return grafico.labels.reduce(
+        (acc, l, i) =>
+          acc + (isAceito(l) ? Number(grafico.quantidades[i]) || 0 : 0),
+        0,
+      );
+    }
+    function somaAceitos(grafico) {
+      return grafico.labels.reduce(
+        (acc, l, i) =>
+          acc + (isAceito(l) ? Number(grafico.valores_financeiros[i]) || 0 : 0),
+        0,
+      );
+    }
+
+    // ---------- Botões segmentados ----------
+    const OPC_QTD_VALOR = [
+      ["qtd", "Qtde", "Mostrar quantidade de casos"],
+      ["valor", "R$", "Mostrar valores monetários"],
+    ];
+    const OPC_VARIACAO = [
+      ["pct", "%", "Variação em percentual"],
+      [
+        "abs",
+        "Δ",
+        "Diferença direta (em casos ou em R$, conforme a rosquinha)",
+      ],
+    ];
+    function segHTML(chave, atual, opcoes, attrs, desabilitarValor) {
+      return (
+        `<div class="seg" ${attrs} data-chave="${chave}" role="group">` +
+        opcoes
+          .map(([v, t, dica]) => {
+            const off = desabilitarValor && v === "valor";
+            return `<button type="button" class="seg-btn${v === atual ? " ativo" : ""}" data-valor="${v}" aria-pressed="${v === atual}" ${off ? "disabled" : ""} title="${off ? "A API ainda não envia os valores monetários deste gráfico" : dica}">${t}</button>`;
+          })
+          .join("") +
+        `</div>`
+      );
+    }
+    function setSegAtivo(seg, valor) {
+      seg.querySelectorAll(".seg-btn").forEach((b) => {
+        const on = b.dataset.valor === valor;
+        b.classList.toggle("ativo", on);
+        b.setAttribute("aria-pressed", on);
+      });
+    }
+    function sincronizarSegGlobais() {
+      document.querySelectorAll(".seg[data-escopo]").forEach((seg) => {
+        setSegAtivo(seg, estadoGlobal[seg.dataset.chave]);
+      });
+    }
+    function sincronizarSegCard(id) {
+      const el = document.getElementById(`card-${id}`);
+      if (!el) return;
+      el.querySelectorAll(".seg[data-card]").forEach((seg) => {
+        setSegAtivo(seg, estadoCards[id][seg.dataset.chave]);
+      });
+    }
+
+    // ---------- Blocos de HTML do card ----------
+    function htmlCentro(arquivo, modo) {
+      const gp = arquivo.grafico_pizza;
+      const rotulo = (t) =>
+        `<span style="font-size: 12px; color: var(--texto-4); text-transform: uppercase; letter-spacing: 1px;">${t}</span><br>`;
+      if (modo === "valor") {
+        return (
+          rotulo("Total Processado") +
+          `<strong style="font-size: 22px; color: var(--texto-1);">${fmtBRL(somar(gp.valores_financeiros))}</strong>`
+        );
+      }
+      return (
+        rotulo("Casos Processados") +
+        `<strong style="font-size: 28px; color: var(--texto-1);">${fmtInt(somar(gp.quantidades))}</strong>`
+      );
+    }
+
+    function htmlResumo(id) {
+      const { arquivo, anterior } = cardsDados[id];
+      const est = estadoCards[id];
+      const gp = arquivo.grafico_pizza;
+      const gpAnt = anterior ? anterior.grafico_pizza : null;
+      const modoVar = est.variacao; // "pct" | "abs"
+      const emValor = est.pizza === "valor";
+      const unidade = emValor ? "valor" : "qtd"; // a variação das fatias segue a rosquinha
+      const base = emValor ? gp.valores_financeiros : gp.quantidades;
+      const totalBase = somar(base);
+      const totalFin = somar(gp.valores_financeiros);
+      const aceitoFin = somaAceitos(gp);
+      const totalQtd = somar(gp.quantidades);
+      const aceitoQtd = somaAceitosQtd(gp);
+
+      let html = `<div class="resumo-topo">
+          <span class="rotulo-controle">Variação vs. mês anterior</span>
+          ${segHTML("variacao", est.variacao, OPC_VARIACAO, `data-card="${id}"`)}
+        </div>`;
+
+      gp.labels.forEach((label, i) => {
+        const varCor = `var(${chaveStatus(label)})`;
+        const principal = emValor ? fmtBRL(base[i]) : fmtInt(base[i]);
+        const atual = Number(base[i]) || 0;
+        const ant = gpAnt
+          ? emValor
+            ? valorPorLabel(gpAnt, label)
+            : qtdPorLabel(gpAnt, label)
+          : null;
+        html += `
+          <div style="display: flex; justify-content: space-between; margin-bottom: 8px; border-left: 4px solid ${varCor}; background: color-mix(in srgb, ${varCor} 12%, transparent); border-radius: 0 6px 6px 0; padding: 6px 8px; font-size: 12px;">
+            <span style="color: ${varCor}; font-weight: 600;">${label}</span>
+            <span style="font-weight: bold; color: var(--texto-1);">
+              ${principal}
+              <span style="font-size: 10px; color: var(--texto-3); margin-left: 5px;">(${pct1(base[i], totalBase)}%)</span>
+              ${tagVariacao(atual, ant, modoVar, unidade)}
+            </span>
+          </div>`;
+      });
+
+      const linhaTotal = (
+        rotulo,
+        valorTxt,
+        tag,
+        extra = "",
+        cor = "var(--texto-1)",
+        dica = "",
+      ) => `
+        <div style="display: flex; justify-content: space-between; align-items: center; ${extra} font-weight: bold; font-size: 13px; color: ${cor};">
+          <span title="${dica}">${rotulo}</span>
+          <span>${valorTxt} ${tag}</span>
+        </div>`;
+
+      // Em modo "Qtde", mostramos também os totais em casos (variação em casos).
+      // Os totais em R$ continuam sempre visíveis, com variação em R$.
+      let primeiro = true;
+      const topo = () => {
+        const s = primeiro
+          ? "margin-top: 12px; border-top: 1px dashed var(--linha); padding-top: 10px;"
+          : "margin-top: 8px;";
+        primeiro = false;
+        return s;
+      };
+      if (!emValor) {
+        html += linhaTotal(
+          "TOTAL DE CASOS",
+          fmtInt(totalQtd),
+          tagVariacao(
+            totalQtd,
+            gpAnt ? somar(gpAnt.quantidades) : null,
+            modoVar,
+            "qtd",
+          ),
+          topo(),
+        );
+        html += linhaTotal(
+          "CASOS ACEITOS",
+          fmtInt(aceitoQtd),
+          tagVariacao(
+            aceitoQtd,
+            gpAnt ? somaAceitosQtd(gpAnt) : null,
+            modoVar,
+            "qtd",
+          ),
+          topo(),
+          "var(--cor-integral)",
+          "Acatado Integral + Acatado Parcial",
+        );
+      }
+      html += linhaTotal(
+        "TOTAL PROCESSADO",
+        fmtBRL(totalFin),
+        tagVariacao(
+          totalFin,
+          gpAnt ? somar(gpAnt.valores_financeiros) : null,
+          modoVar,
+          "valor",
+        ),
+        topo(),
+      );
+      html += linhaTotal(
+        "VALOR ACEITO",
+        fmtBRL(aceitoFin),
+        tagVariacao(
+          aceitoFin,
+          gpAnt ? somaAceitos(gpAnt) : null,
+          modoVar,
+          "valor",
+        ),
+        topo(),
+        "var(--cor-integral)",
+        "Acatado Integral + Acatado Parcial",
+      );
+      html += `
+        <div style="display: flex; justify-content: space-between; margin-top: 4px; font-size: 11px; color: var(--texto-3);">
+          <span>Taxa de aceitação (valor aceito ÷ total)</span>
+          <span>${pct1(aceitoFin, totalFin)}%</span>
+        </div>`;
+      return html;
+    }
+
+    function htmlCard(id) {
+      const { arquivo } = cardsDados[id];
+      const est = estadoCards[id];
+      const semValorBarras = !Array.isArray(
+        arquivo.grafico_barras.valores_financeiros,
+      );
+      return `
+        <div class="card-arquivo" id="card-${id}">
+          <h4 style="text-align: center; color: var(--texto-2); margin-top: 0; margin-bottom: 20px;">${arquivo.nome_arquivo}</h4>
+
+          <div style="display: flex; gap: 20px; align-items: flex-start;">
+            <div style="flex: 1; min-width: 290px; display: flex; flex-direction: column; align-items: center;">
+              <div class="controle-linha">
+                <span class="rotulo-controle">Rosquinha</span>
+                ${segHTML("pizza", est.pizza, OPC_QTD_VALOR, `data-card="${id}"`)}
+              </div>
+              <div style="width: 100%; max-width: 220px;">
+                <canvas id="pizza-${id}"></canvas>
+                <div id="centro-${id}" style="text-align: center; margin-top: 0px; margin-bottom: 20px;">${htmlCentro(arquivo, est.pizza)}</div>
+              </div>
+              <div class="resumo-card" id="resumo-${id}">${htmlResumo(id)}</div>
+            </div>
+
+            <div style="flex: 1; min-width: 500px; display: flex; flex-direction: column;">
+              <div class="controle-linha" style="justify-content: space-between;">
+                <h5 style="margin: 0; color: var(--texto-2); font-size: 13px; font-weight: normal;">Volume de Inconsistências</h5>
+                ${segHTML("barras", est.barras, OPC_QTD_VALOR, `data-card="${id}"`, semValorBarras)}
+              </div>
+              <canvas id="barras-${id}"></canvas>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    // ---------- Gráficos do card ----------
+    function modoBarras(id) {
+      const { arquivo } = cardsDados[id];
+      return estadoCards[id].barras === "valor" &&
+        Array.isArray(arquivo.grafico_barras.valores_financeiros)
+        ? "valor"
+        : "qtd";
+    }
+    function dadosBarras(id) {
+      const gb = cardsDados[id].arquivo.grafico_barras;
+      return modoBarras(id) === "valor"
+        ? gb.valores_financeiros
+        : gb.quantidades;
+    }
+    const rotuloEixoBarras = (modo) =>
+      modo === "valor"
+        ? "Valor lançado e rejeitado (R$)"
+        : "Quantidade de casos";
+
+    function desenharGraficosCard(id) {
+      const { arquivo } = cardsDados[id];
+      const gp = arquivo.grafico_pizza;
+      const gb = arquivo.grafico_barras;
+      const cores = gp.labels.map((l) => corTema(chaveStatus(l)));
+
+      const pizza = new Chart(
+        document.getElementById(`pizza-${id}`).getContext("2d"),
+        {
+          type: "doughnut",
+          data: {
+            labels: gp.labels,
+            datasets: [
+              {
+                data:
+                  estadoCards[id].pizza === "valor"
+                    ? gp.valores_financeiros
+                    : gp.quantidades,
+                backgroundColor: cores,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  label: function (ctx) {
+                    const p = pct1(ctx.raw, somar(ctx.dataset.data));
+                    return estadoCards[id].pizza === "valor"
+                      ? `${fmtBRL(ctx.raw)} (${p}%)`
+                      : `${fmtInt(ctx.raw)} registros (${p}%)`;
+                  },
+                },
+              },
+            },
+          },
+        },
+      );
+
+      const modoInicial = modoBarras(id);
+      const barras = new Chart(
+        document.getElementById(`barras-${id}`).getContext("2d"),
+        {
+          type: "bar",
+          data: {
+            labels: gb.labels.map((l) => formatarLabelMultiplasLinhas(l, 25)),
+            datasets: [
+              {
+                label: modoInicial === "valor" ? "Valor (R$)" : "Quantidade",
+                data: dadosBarras(id),
+                backgroundColor: corTema("--cor-barras"),
+                borderRadius: 6,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  label: function (ctx) {
+                    const p = pct1(ctx.raw, somar(ctx.dataset.data));
+                    return modoBarras(id) === "valor"
+                      ? `${fmtBRL(ctx.raw)} (${p}%)`
+                      : `${fmtInt(ctx.raw)} registros (${p}%)`;
+                  },
+                },
+              },
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                title: { display: true, text: rotuloEixoBarras(modoInicial) },
+                ticks: {
+                  callback: (v) =>
+                    modoBarras(id) === "valor" ? fmtCompacto(v) : fmtInt(v),
+                },
+              },
+            },
+          },
+        },
+      );
+
+      graficosCards[id] = { pizza, barras };
+    }
+
+    function atualizarPizza(id) {
+      const { arquivo } = cardsDados[id];
+      const modo = estadoCards[id].pizza;
+      const g = graficosCards[id].pizza;
+      g.data.datasets[0].data =
+        modo === "valor"
+          ? arquivo.grafico_pizza.valores_financeiros
+          : arquivo.grafico_pizza.quantidades;
+      g.update();
+      document.getElementById(`centro-${id}`).innerHTML = htmlCentro(
+        arquivo,
+        modo,
+      );
+      atualizarResumo(id); // a legenda acompanha o modo da rosquinha
+    }
+    function atualizarBarras(id) {
+      const g = graficosCards[id].barras;
+      const modo = modoBarras(id);
+      g.data.datasets[0].data = dadosBarras(id);
+      g.data.datasets[0].label = modo === "valor" ? "Valor (R$)" : "Quantidade";
+      g.options.scales.y.title.text = rotuloEixoBarras(modo);
+      g.update();
+    }
+    function atualizarResumo(id) {
+      document.getElementById(`resumo-${id}`).innerHTML = htmlResumo(id);
+    }
+    function atualizarCard(id, chave) {
+      sincronizarSegCard(id);
+      if (chave === "pizza") atualizarPizza(id);
+      else if (chave === "barras") atualizarBarras(id);
+      else if (chave === "variacao") atualizarResumo(id);
+    }
+
+    // ---------- Cards: criação e limpeza ----------
+    function destruirGraficosCards() {
+      Object.values(graficosCards).forEach((g) => {
+        g.pizza.destroy();
+        g.barras.destroy();
+      });
+      [graficosCards, cardsDados, estadoCards].forEach((o) =>
+        Object.keys(o).forEach((k) => delete o[k]),
+      );
+    }
+    function renderizarCards(dados) {
+      const areaCards = document.getElementById("area-cards");
+      dados.cards_arquivos.forEach((arquivo, idx) => {
+        const id = String(arquivo.id_arquivo);
+        cardsDados[id] = {
+          arquivo,
+          anterior: idx > 0 ? dados.cards_arquivos[idx - 1] : null, // cards já vêm ordenados por competência
+        };
+        // Cada card nasce com o modo que estiver no painel esquerdo
+        estadoCards[id] = {
+          pizza: estadoGlobal.pizza,
+          barras: estadoGlobal.barras,
+          variacao: estadoGlobal.variacao,
+        };
+        areaCards.insertAdjacentHTML("beforeend", htmlCard(id));
+        desenharGraficosCard(id);
+      });
+    }
+
+    // ---------- Tendência ----------
+    const temValorTendencia = () =>
+      !!dadosTendencia && Array.isArray(dadosTendencia.aceitos_valor);
+    const modoTendencia = () =>
+      estadoGlobal.tendencia === "valor" && temValorTendencia()
+        ? "valor"
+        : "qtd";
+    function serieTendencia(chave) {
+      return modoTendencia() === "valor"
+        ? dadosTendencia[chave + "_valor"]
+        : dadosTendencia[chave];
+    }
+    function atualizarDisponibilidadeTendencia() {
+      const btn = document.querySelector(
+        '.seg[data-escopo="tendencia"] .seg-btn[data-valor="valor"]',
+      );
+      if (!btn) return;
+      const ok = !dadosTendencia || temValorTendencia();
+      btn.disabled = !ok;
+      btn.title = ok
+        ? "Mostrar valores monetários"
+        : "A API ainda não envia os valores monetários da tendência";
+    }
+    function desenharTendencia() {
+      if (!dadosTendencia) return;
+      const ctx = document.getElementById("chartTendencia").getContext("2d");
+      if (chartTendenciaInstancia) chartTendenciaInstancia.destroy();
+      const serie = (label, chave, cor) => ({
+        label,
+        data: serieTendencia(chave),
+        borderColor: corTema(cor),
+        backgroundColor: corTema(cor) + "22",
+        pointBackgroundColor: corTema(cor),
+        fill: true,
+        tension: 0.3,
+      });
+      chartTendenciaInstancia = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: dadosTendencia.labels,
+          datasets: [
+            serie("Acatado", "aceitos", "--cor-integral"),
+            serie("Rejeitado", "rejeitados", "--cor-tendencia-rej"),
+            serie("Parcial", "parciais", "--cor-parcial"),
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: "top" },
+            tooltip: {
+              callbacks: {
+                label: (c) =>
+                  `${c.dataset.label}: ${modoTendencia() === "valor" ? fmtBRL(c.raw) : fmtInt(c.raw)}`,
+              },
+            },
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              title: {
+                display: true,
+                text:
+                  modoTendencia() === "valor"
+                    ? "Valor (R$)"
+                    : "Quantidade de casos",
+              },
+              ticks: {
+                callback: (v) =>
+                  modoTendencia() === "valor" ? fmtCompacto(v) : fmtInt(v),
+              },
+            },
+          },
+        },
+      });
+      atualizarDisponibilidadeTendencia();
+    }
+    function atualizarTendencia() {
+      if (!chartTendenciaInstancia || !dadosTendencia) return;
+      const g = chartTendenciaInstancia;
+      g.data.datasets[0].data = serieTendencia("aceitos");
+      g.data.datasets[1].data = serieTendencia("rejeitados");
+      g.data.datasets[2].data = serieTendencia("parciais");
+      g.options.scales.y.title.text =
+        modoTendencia() === "valor" ? "Valor (R$)" : "Quantidade de casos";
+      g.update();
+    }
+
+    // ---------- Ações dos botões ----------
+    function definirGlobal(chave, valor) {
+      estadoGlobal[chave] = valor;
+      salvarModos();
+      sincronizarSegGlobais();
+      Object.keys(cardsDados).forEach((id) => {
+        estadoCards[id][chave] = valor;
+        atualizarCard(id, chave);
+      });
+    }
+    function definirCard(id, chave, valor) {
+      if (!estadoCards[id]) return;
+      estadoCards[id][chave] = valor;
+      atualizarCard(id, chave);
+    }
+    function definirTendencia(valor) {
+      estadoGlobal.tendencia = valor;
+      salvarModos();
+      sincronizarSegGlobais();
+      atualizarTendencia();
+    }
+    // Um único ouvinte para todos os botões (inclusive os dos cards criados dinamicamente)
+    document.addEventListener("click", function (e) {
+      const btn = e.target.closest(".seg-btn");
+      if (!btn || btn.disabled) return;
+      const seg = btn.closest(".seg");
+      if (!seg) return;
+      const { chave, escopo, card } = seg.dataset;
+      const valor = btn.dataset.valor;
+      if (escopo === "global") definirGlobal(chave, valor);
+      else if (escopo === "tendencia") definirTendencia(valor);
+      else if (card !== undefined) definirCard(card, chave, valor);
+    });
+    sincronizarSegGlobais();
+    // ===============================================================================
+
+    let chartPizzaInstancia = null;
+    let chartBarrasInstancia = null;
+    let chartTendenciaInstancia = null;
+
+    async function carregarDashboard() {
+      configurarPadroesChart(); // garante as cores do tema atual antes de desenhar
+      const btnFiltrar = document.getElementById("btn-buscar");
+      const textoOriginal = btnFiltrar.innerHTML;
+      try {
+        if (btnFiltrar) {
+          btnFiltrar.disabled = true;
+          btnFiltrar.innerHTML = "⏳ Carregando...";
+        }
+
+        // 1. CAPTURAR OS FILTROS DA BARRA LATERAL
+        const selectConvenio = document.getElementById("codigo_convenio");
+        const opcoesSelecionadas = Array.from(selectConvenio.selectedOptions);
+
+        const convenio = opcoesSelecionadas.map((opt) => opt.value);
+
+        // NOVO E CORRIGIDO: Se houver vários selecionados, junta os nomes com " + " para o título ficar bonito
+        const nomeConvenioTexto = opcoesSelecionadas
+          .map((opt) => opt.text)
+          .join(" + ");
+
+        const consignataria = document.getElementById("consignataria").value;
+        const produto = document.getElementById("produto").value;
+        const compInicio = document.getElementById("competencia_inicio").value;
+        const compFim = document.getElementById("competencia_fim").value; // Feature preservada!
+
+        // 2. MONTAR A URL DINÂMICA
+        const parametros = new URLSearchParams();
+
+        // NOVO E CORRIGIDO: Loop obrigatório para o FastAPI entender a lista
+        if (convenio.length > 0) {
+          convenio.forEach((cod) => parametros.append("codigo_convenio", cod));
+        }
+
+        if (nomeConvenioTexto)
+          parametros.append("nome_convenio", nomeConvenioTexto);
+        if (consignataria) parametros.append("consignataria", consignataria);
+        if (produto) parametros.append("produto", produto);
+        if (compInicio) parametros.append("competencia_inicio", compInicio);
+        if (compFim) parametros.append("competencia_fim", compFim); // Feature preservada!
+
+        const queryString = parametros.toString();
+
+        // ... (o restante do código com a urlFinal e o fetch continua exatamente igual) ...
+        // Se tiver parâmetros, adiciona a interrogação. Se não, chama a rota pura (traz tudo).
+        const endpoint = queryString
+          ? `/api/relatorios/dashboard/resumo?${queryString}`
+          : "/api/relatorios/dashboard/resumo";
+
+        const urlFinal = `${API_URL}${endpoint}`;
+
+        // 3. FAZER A BUSCA NA NUVEM
+        const resposta = await fetch(urlFinal);
+        const dados = await resposta.json();
+
+        destruirGraficosCards(); // evita gráficos "fantasma" ao filtrar de novo
+        const areaCards = document.getElementById("area-cards");
+        areaCards.innerHTML = "";
+
+        // Se o backend gritar que deu erro (400, 404, 500), a gente captura e exibe na tela
+        if (!resposta.ok) {
+          // Tenta ler a mensagem de erro que o FastAPI enviou (ex: "Selecione um convênio")
+          let mensagemErro =
+            "Não existem dados para esta combinação de filtros ou ocorreu um erro na busca.";
+          try {
+            const erroJson = await resposta.json();
+            if (erroJson.detail) mensagemErro = erroJson.detail;
+          } catch (e) {
+            // Se não vier JSON, ignora e usa a mensagem padrão
+          }
+
+          areaCards.innerHTML = `
+                <div style="width: 100%; text-align: center; padding: 50px; color: var(--texto-4);">
+                    <h4 style="color: #e74c3c;">Aviso</h4>
+                    <p>${mensagemErro}</p>
+                </div>
+            `;
+
+          // Restaura o botão e aborta a função
+          if (btnFiltrar) {
+            btnFiltrar.innerHTML = textoOriginal;
+            btnFiltrar.disabled = false;
+          }
+          return;
+        } // <-- Fim do seu if (!resposta.ok)
+
+        // Agora verificamos exatamente a chave 'cards_arquivos' que o seu Python devolve
+        if (
+          !dados ||
+          !dados.cards_arquivos ||
+          dados.cards_arquivos.length === 0
+        ) {
+          areaCards.innerHTML = `
+                <div style="width: 100%; text-align: center; padding: 50px; color: var(--texto-4);">
+                    <h4 style="color: #f39c12;">Nenhum dado encontrado</h4>
+                    <p>Não existem registros para esta combinação de convênio, banco ou período.</p>
+                </div>
+            `;
+
+          // Restaura o botão
+          if (btnFiltrar) {
+            btnFiltrar.innerHTML = textoOriginal;
+            btnFiltrar.disabled = false;
+          }
+
+          // Dispara o alerta laranja no topo da tela
+          mostrarAlerta(
+            "Nenhum dado encontrado com esses parâmetros.",
+            "#f39c12",
+          );
+
+          // O return impede que o JavaScript continue rodando e exiba "Concluído"
+          return;
+        }
+
+        // Desenha os cards (rosquinha, resumo e barras) com os botões de exibição
+        renderizarCards(dados);
+
+        // Desenha a Barra Direita (Gráfico de Tendência)
+        if (!dados.grafico_tendencia) return;
+        dadosTendencia = dados.grafico_tendencia;
+        desenharTendencia();
+        // 3. O PONTO DE IGNIÇÃO DA IA (COM TRAVA DE SEGURANÇA)
+        const botaoIA = document.getElementById("toggle-ia");
+
+        // Só dispara a IA se o botão estiver marcado (checked)
+        if (botaoIA && botaoIA.checked) {
+          gerarResumoIA(dados);
+        } else {
+          // Se estiver desligado, limpa a caixa e avisa que está em modo de teste
+          document.getElementById("caixa-ia").innerHTML =
+            '<p style="color: var(--texto-3); text-align: center; font-size: 13px; margin-top: 50px;">⏸️ Modo de teste visual ativo.<br>Geração de insight desativada.</p>';
+        }
+        if (btnFiltrar) {
+          btnFiltrar.classList.remove("btn-primary"); // Troque 'btn-primary' pela classe de cor original do seu botão, se for diferente
+          btnFiltrar.classList.add("btn-success");
+          btnFiltrar.innerHTML = "✅ Concluído!";
+
+          // Restaura o botão após 2 segundos
+          setTimeout(() => {
+            btnFiltrar.classList.remove("btn-success");
+            btnFiltrar.classList.add("btn-primary");
+            btnFiltrar.innerHTML = textoOriginal;
+            btnFiltrar.disabled = false;
+          }, 2000);
+        }
+      } catch (erro) {
+        console.error("Erro ao desenhar gráficos:", erro);
+      }
+    }
+
+    async function gerarResumoIA(dadosDashboard) {
+      const caixaIA = document.getElementById("caixa-ia");
+
+      // Mostra um indicador de carregamento charmoso enquanto o Python trabalha
+      caixaIA.innerHTML =
+        '<p style="color: var(--texto-3); text-align: center; font-size: 14px; margin-top: 50px;">⏳ A IA está analisando os resultados...</p>';
+
+      try {
+        const resposta = await fetch(
+          `${API_URL}/api/relatorios/dashboard/gerar-insight`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            // Empacotamos todos os dados matemáticos do painel e mandamos pro backend
+            body: JSON.stringify({ resumo_dados: dadosDashboard }),
+          },
+        );
+
+        const dadosIA = await resposta.json();
+
+        if (resposta.ok) {
+          // Limpamos possíveis formatações markdown (**) que a IA possa devolver e injetamos o texto
+          const textoLimpo = dadosIA.insight
+            .replace(/\*\*/g, "")
+            .replace(/\*/g, "");
+
+          // Um pequeno selo indicando se a resposta veio do Cache (⚡) ou se foi gerada na hora (🤖)
+          const iconeOrigem =
+            dadosIA.status === "cache" ? "⚡ (Cache)" : "🤖 (Gerado)";
+
+          caixaIA.innerHTML = `
+                <p style="color: var(--texto-1); font-size: 13px; line-height: 1.6; text-align: justify; margin: 0;">
+                    ${textoLimpo}
+                </p>
+                <div style="text-align: right; margin-top: 15px; font-size: 10px; color: var(--texto-3);">
+                    ${iconeOrigem}
+                </div>
+            `;
+        } else {
+          caixaIA.innerHTML = `<p style="color: #e74c3c; font-size: 13px; text-align: center;">Erro da API ao gerar insight.</p>`;
+        }
+      } catch (erro) {
+        console.error("Erro na comunicação com a IA:", erro);
+        caixaIA.innerHTML = `<p style="color: #e74c3c; font-size: 13px; text-align: center;">Sem conexão com o serviço de Inteligência Artificial.</p>`;
+      }
+    }
+
+    document.addEventListener("DOMContentLoaded", function () {
+      const resizer = document.getElementById("redimensionador");
+      const barraDireita = document.getElementById("barra-direita");
+
+      let x_inicial = 0;
+      let largura_inicial = 0;
+
+      // Quando o usuário CLICA e SEGURA o puxador
+      const mousePressionado = function (e) {
+        // Pega a posição inicial do mouse e a largura atual da barra
+        x_inicial = e.clientX;
+        largura_inicial = barraDireita.getBoundingClientRect().width;
+
+        // Adiciona a classe visual para manter a cor do puxador acesa
+        resizer.classList.add("resizing");
+
+        // Escuta os movimentos do mouse na tela inteira para o drag ser fluido
+        document.addEventListener("mousemove", mouseMovendo);
+        document.addEventListener("mouseup", mouseSolto);
+
+        // Impede que o texto da tela seja selecionado sem querer enquanto arrasta
+        document.body.style.userSelect = "none";
+      };
+
+      // Quando o usuário ARRASTA o mouse
+      const mouseMovendo = function (e) {
+        // Calcula a distância. Como a barra está na direita, arrastar para a esquerda (negativo) aumenta a barra.
+        const diferenca_x = x_inicial - e.clientX;
+        const novaLargura = largura_inicial + diferenca_x;
+
+        // Aplica a nova largura. O min-width do CSS impede que fique menor que 300px automaticamente.
+        barraDireita.style.width = `${novaLargura}px`;
+      };
+
+      // Quando o usuário SOLTA o clique
+      const mouseSolto = function () {
+        resizer.classList.remove("resizing");
+        document.removeEventListener("mousemove", mouseMovendo);
+        document.removeEventListener("mouseup", mouseSolto);
+        document.body.style.userSelect = "";
+      };
+
+      // Ativa o evento no puxador
+      if (resizer) {
+        resizer.addEventListener("mousedown", mousePressionado);
+      }
+    });
+
+    // Executa a função assim que a página é carregada
+    // Atrela a função de carregar o dashboard ao clique do botão de filtro
+    document
+      .getElementById("btn-buscar")
+      .addEventListener("click", carregarDashboard);
+  </script>
+  <script>
+    // ============================ REGISTRO DE UPLOADS ============================
+    // true  = as datas de historico_uploads estão gravadas em UTC (o mais comum em banco na nuvem)
+    // false = estão gravadas no horário local do navegador
+    const DATAS_DO_BANCO_EM_UTC = true;
+    const REG_POR_PAGINA = 30;
+
+    // ---- Funções puras (sem DOM) ----
+    function regNormalizar(txt) {
+      return String(txt || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .trim();
+    }
+    function regEscapar(txt) {
+      return String(txt == null ? "" : txt).replace(
+        /[&<>"']/g,
+        (c) =>
+          ({
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;",
+          })[c],
+      );
+    }
+    function regFormatarCompetencia(aaaaMm) {
+      const m = /^(\d{4})-(\d{2})/.exec(aaaaMm || "");
+      return m ? `${m[2]}/${m[1]}` : aaaaMm || "--";
+    }
+    function regParseData(iso) {
+      if (!iso) return null;
+      let s = String(iso).replace(" ", "T");
+      if (DATAS_DO_BANCO_EM_UTC && !/[zZ]|[+-]\d{2}:?\d{2}$/.test(s)) s += "Z";
+      const d = new Date(s);
+      return isNaN(d.getTime()) ? null : d;
+    }
+    function regFormatarDataHora(d) {
+      return d.toLocaleString("pt-BR", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    }
+
+    // Procura a competência escrita no NOME do arquivo. Formatos aceitos (mês com ou sem zero à frente):
+    //   10.26  10.2026  9.26  09.2026  (separadores . _ - / ou espaço)  |  2026-10  |  102026  |  202610
+    // Retorna uma lista de "AAAA-MM" (pode vir vazia ou com mais de uma).
+    function detectarCompetencias(nomeArquivo) {
+      const nome = String(nomeArquivo || "").replace(
+        /\.(csv|xlsx|xls|xml|txt|ret|rem|zip|pdf|json)$/i,
+        "",
+      );
+      const MES = "(0?[1-9]|1[0-2])";
+      const ANO2 = "([23]\\d)"; // 20..39 => 2020..2039 (evita confundir com dia/outros números)
+      const ANO4 = "(20\\d{2})";
+      const SEP = "[._\\-/ ]";
+      const achados = new Set();
+      const add = (ano, mes) => {
+        const a = String(ano).length === 2 ? "20" + ano : String(ano);
+        achados.add(`${a}-${String(mes).padStart(2, "0")}`);
+      };
+      const regras = [
+        [
+          new RegExp(`(?:^|\\D)${MES}${SEP}(?:${ANO4}|${ANO2})(?!\\d)`, "g"),
+          (m) => add(m[2] || m[3], m[1]),
+        ],
+        [
+          new RegExp(`(?:^|\\D)${ANO4}${SEP}${MES}(?!\\d)`, "g"),
+          (m) => add(m[1], m[2]),
+        ],
+        [
+          new RegExp(`(?:^|\\D)(0[1-9]|1[0-2])${ANO4}(?!\\d)`, "g"),
+          (m) => add(m[2], m[1]),
+        ],
+        [
+          new RegExp(`(?:^|\\D)${ANO4}(0[1-9]|1[0-2])(?!\\d)`, "g"),
+          (m) => add(m[1], m[2]),
+        ],
+      ];
+      regras.forEach(([re, fn]) => {
+        let m;
+        while ((m = re.exec(nome)) !== null) {
+          fn(m);
+          if (m.index === re.lastIndex) re.lastIndex++;
+        }
+      });
+      return [...achados];
+    }
+    // O nome "diverge" quando traz alguma competência, mas nenhuma é a do upload
+    function nomeDivergeDaCompetencia(nomeArquivo, competenciaUpload) {
+      const achadas = detectarCompetencias(nomeArquivo);
+      if (achadas.length === 0) return null;
+      return achadas.includes(competenciaUpload) ? null : achadas;
+    }
+
+    // ---- Nomes amigáveis (lidos dos selects ANTES do Tom Select reescrever as opções) ----
+    function regSnapshotOpcoes(selectId) {
+      const mapa = new Map();
+      document.querySelectorAll(`#${selectId} option`).forEach((o) => {
+        if (o.value)
+          mapa.set(o.value, o.textContent.replace(/\s+/g, " ").trim());
+      });
+      return mapa;
+    }
+    const REG_NOMES = {
+      convenio: regSnapshotOpcoes("codigo_convenio"),
+      banco: regSnapshotOpcoes("consignataria"),
+      produto: regSnapshotOpcoes("produto"),
+    };
+    const regNomeConvenio = (c) =>
+      REG_NOMES.convenio.get(String(c)) || `Convênio ${c}`;
+    const regNomeBanco = (b) => REG_NOMES.banco.get(b) || b || "--";
+    const regNomeProduto = (p) => REG_NOMES.produto.get(p) || p || "--";
+
+    // Traduz o texto digitado ("paraiba", "capital", "cartão") nos códigos/valores correspondentes
+    function regCodigosPorTexto(mapa, termo) {
+      const t = regNormalizar(termo);
+      const r = [];
+      mapa.forEach((nome, valor) => {
+        if (regNormalizar(nome).includes(t) || regNormalizar(valor).includes(t))
+          r.push(valor);
+      });
+      return r;
+    }
+
+    // ---- Estado ----
+    const reg = {
+      itens: [],
+      total: 0,
+      busca: "",
+      carregando: false,
+      seq: 0,
+      desatualizado: true,
+      aberto: false,
+      expandidos: new Set(),
+    };
+    const elPainel = document.getElementById("painel-registro");
+    const elBtn = document.getElementById("btn-registro");
+    const elLista = document.getElementById("reg-lista");
+    const elBusca = document.getElementById("reg-busca");
+    const elLimpar = document.getElementById("reg-limpar");
+    const elContagem = document.getElementById("reg-contagem");
+    const elAviso = document.getElementById("reg-aviso");
+    const barraOculta = () =>
+      document.getElementById("menu-lateral").classList.contains("oculta");
+
+    function sincronizarPainelRegistro() {
+      const visivel = reg.aberto && !barraOculta();
+      elPainel.classList.toggle("visivel", visivel);
+      elPainel.setAttribute("aria-hidden", String(!visivel));
+      elBtn.classList.toggle("ativo", reg.aberto);
+      elBtn.setAttribute("aria-expanded", String(reg.aberto));
+    }
+    function abrirRegistro() {
+      if (barraOculta()) document.getElementById("btn-toggle-menu").click(); // reabre a barra primeiro
+      reg.aberto = true;
+      sincronizarPainelRegistro();
+      carregarRegistro(true);
+    }
+    function fecharRegistro() {
+      reg.aberto = false;
+      sincronizarPainelRegistro();
+    }
+    elBtn.addEventListener("click", () =>
+      reg.aberto ? fecharRegistro() : abrirRegistro(),
+    );
+    document
+      .getElementById("reg-voltar")
+      .addEventListener("click", fecharRegistro);
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && reg.aberto) fecharRegistro();
+    });
+
+    // Chamado depois de um upload ou de uma exclusão
+    function registroMarcarDesatualizado() {
+      reg.desatualizado = true;
+      if (reg.aberto) carregarRegistro(true);
+    }
+
+    // ---- Busca ----
+    let regTimer = null;
+    elBusca.addEventListener("input", () => {
+      elLimpar.style.display = elBusca.value ? "block" : "none";
+      clearTimeout(regTimer);
+      regTimer = setTimeout(() => {
+        reg.busca = elBusca.value.trim();
+        carregarRegistro(true);
+      }, 350);
+    });
+    elLimpar.addEventListener("click", () => {
+      elBusca.value = "";
+      elLimpar.style.display = "none";
+      reg.busca = "";
+      carregarRegistro(true);
+      elBusca.focus();
+    });
+
+    // ---- Requisição ----
+    async function carregarRegistro(recomecar) {
+      if (recomecar) {
+        reg.itens = [];
+        reg.total = 0;
+        reg.expandidos.clear();
+      }
+      const minhaSeq = ++reg.seq; // descarta respostas antigas (digitação rápida)
+      reg.carregando = true;
+      elAviso.style.display = "none";
+      renderizarRegistro();
+
+      const p = new URLSearchParams();
+      p.set("limite", REG_POR_PAGINA);
+      p.set("offset", reg.itens.length);
+      if (reg.busca) {
+        p.set("busca", reg.busca);
+        if (!/^\d+$/.test(reg.busca) && reg.busca.length >= 2) {
+          regCodigosPorTexto(REG_NOMES.convenio, reg.busca)
+            .slice(0, 60)
+            .forEach((c) => p.append("convenios", c));
+          regCodigosPorTexto(REG_NOMES.banco, reg.busca).forEach((b) =>
+            p.append("consignatarias", b),
+          );
+          regCodigosPorTexto(REG_NOMES.produto, reg.busca).forEach((x) =>
+            p.append("produtos", x),
+          );
+        }
+      }
+      try {
+        const resp = await fetch(
+          `${API_URL}/api/upload/registro?${p.toString()}`,
+        );
+        let dados = null;
+        try {
+          dados = await resp.json();
+        } catch (e) {}
+        if (minhaSeq !== reg.seq) return;
+        if (!resp.ok) {
+          const detalhe =
+            dados && dados.detail
+              ? typeof dados.detail === "string"
+                ? dados.detail
+                : "Erro ao consultar o registro."
+              : "Erro ao consultar o registro.";
+          elAviso.textContent = detalhe;
+          elAviso.style.display = "block";
+        } else {
+          reg.itens = reg.itens.concat(dados.itens || []);
+          reg.total = dados.total || 0;
+          reg.desatualizado = false;
+        }
+      } catch (e) {
+        if (minhaSeq !== reg.seq) return;
+        elAviso.textContent = "Não foi possível conectar ao servidor.";
+        elAviso.style.display = "block";
+      } finally {
+        if (minhaSeq === reg.seq) {
+          reg.carregando = false;
+          renderizarRegistro();
+        }
+      }
+    }
+
+    // ---- Renderização ----
+    function htmlItemRegistro(it, idx) {
+      const competencia = it.competencia;
+      const arquivos = it.arquivos || [];
+      const data = regParseData(it.criado_em);
+      const recente =
+        data &&
+        Date.now() - data.getTime() < 24 * 3600 * 1000 &&
+        Date.now() >= data.getTime() - 60000;
+      const divergencias = arquivos
+        .map((a) => ({
+          nome: a,
+          achadas: nomeDivergeDaCompetencia(a, competencia),
+        }))
+        .filter((x) => x.achadas);
+      const expandido = reg.expandidos.has(it.id);
+      const primeiro = arquivos[0];
+      const nomeDiverge = (n) => divergencias.some((d) => d.nome === n);
+
+      const linhaArquivo = primeiro
+        ? `<div class="reg-arquivo" title="${regEscapar(arquivos.join("\n"))}">
+             <span>📄</span><span class="nome">${regEscapar(primeiro)}</span>
+             ${arquivos.length > 1 ? `<button type="button" class="reg-chip" data-acao="expandir" data-id="${it.id}">+${arquivos.length - 1} ${arquivos.length - 1 === 1 ? "arquivo" : "arquivos"} ${expandido ? "▴" : "▾"}</button>` : ""}
+           </div>`
+        : "";
+      const lista = expandido
+        ? `<ul class="reg-expandido">${arquivos.map((a) => `<li class="${nomeDiverge(a) ? "diverge" : ""}">${nomeDiverge(a) ? "⚠ " : ""}${regEscapar(a)}</li>`).join("")}</ul>`
+        : "";
+      const tituloAviso = divergencias
+        .map(
+          (d) =>
+            `${d.nome} → ${d.achadas.map(regFormatarCompetencia).join(", ")}`,
+        )
+        .join("\n");
+      const rodape = [
+        data ? `<span>${regFormatarDataHora(data)}</span>` : "",
+        it.linhas
+          ? `<span>· ${Number(it.linhas).toLocaleString("pt-BR")} linhas</span>`
+          : "",
+        recente ? `<span class="reg-selo recente">Recente</span>` : "",
+        divergencias.length
+          ? `<span class="reg-selo aviso" title="Upload em ${regFormatarCompetencia(competencia)}. Nome do arquivo sugere:\n${regEscapar(tituloAviso)}">⚠ Competência do nome pode divergir</span>`
+          : "",
+      ].join(" ");
+
+      return `<div class="reg-item" role="button" tabindex="0" data-idx="${idx}" title="Clique para aplicar estes filtros">
+          <div class="reg-linha1">
+            <span class="reg-conv">${regEscapar(regNomeConvenio(it.codigo_convenio))}</span>
+            <span class="reg-comp">${regFormatarCompetencia(competencia)}</span>
+          </div>
+          <div class="reg-linha2">${regEscapar(regNomeBanco(it.consignataria))} · ${regEscapar(regNomeProduto(it.produto))}</div>
+          ${linhaArquivo}${lista}
+          <div class="reg-rodape">${rodape}</div>
+        </div>`;
+    }
+    function renderizarRegistro() {
+      if (reg.carregando && reg.itens.length === 0) {
+        elLista.innerHTML = `<div class="reg-estado">⏳ Carregando...</div>`;
+        elContagem.textContent = "";
+        return;
+      }
+      if (reg.itens.length === 0) {
+        elLista.innerHTML = `<div class="reg-estado">${elAviso.style.display === "block" ? "" : reg.busca ? "Nenhum upload encontrado para essa busca." : "Nenhum upload registrado ainda."}</div>`;
+        elContagem.textContent = "";
+        return;
+      }
+      const maisUm = reg.itens.length < reg.total;
+      elContagem.textContent = `Mostrando ${reg.itens.length} de ${reg.total} ${reg.total === 1 ? "envio" : "envios"} (mais recentes primeiro)`;
+      elLista.innerHTML =
+        reg.itens.map((it, i) => htmlItemRegistro(it, i)).join("") +
+        (maisUm
+          ? `<button type="button" class="reg-mais" data-acao="mais">${reg.carregando ? "Carregando..." : "Carregar mais"}</button>`
+          : "");
+    }
+
+    // ---- Cliques na lista (delegação) ----
+    elLista.addEventListener("click", (e) => {
+      const chip = e.target.closest('[data-acao="expandir"]');
+      if (chip) {
+        e.stopPropagation();
+        const id = Number(chip.dataset.id);
+        reg.expandidos.has(id)
+          ? reg.expandidos.delete(id)
+          : reg.expandidos.add(id);
+        const topo = elLista.scrollTop;
+        renderizarRegistro();
+        elLista.scrollTop = topo;
+        return;
+      }
+      if (e.target.closest('[data-acao="mais"]')) {
+        if (!reg.carregando) carregarRegistro(false);
+        return;
+      }
+      const card = e.target.closest(".reg-item");
+      if (card) aplicarFiltroDoRegistro(reg.itens[Number(card.dataset.idx)]);
+    });
+    elLista.addEventListener("keydown", (e) => {
+      if (
+        (e.key === "Enter" || e.key === " ") &&
+        e.target.classList.contains("reg-item")
+      ) {
+        e.preventDefault();
+        aplicarFiltroDoRegistro(reg.itens[Number(e.target.dataset.idx)]);
+      }
+    });
+    // Rolagem infinita
+    elLista.addEventListener("scroll", () => {
+      if (
+        !reg.carregando &&
+        reg.itens.length < reg.total &&
+        elLista.scrollTop + elLista.clientHeight >= elLista.scrollHeight - 80
+      ) {
+        carregarRegistro(false);
+      }
+    });
+
+    // ---- Clique numa linha: preenche a barra de filtros e carrega aquele upload ----
+    function regDefinirSelect(id, valor) {
+      const sel = document.getElementById(id);
+      const opcao = Array.from(sel.options).find(
+        (o) =>
+          o.value === valor ||
+          o.value.toUpperCase() === String(valor).toUpperCase(),
+      );
+      if (!opcao) return false;
+      sel.value = opcao.value;
+      return true;
+    }
+    function aplicarFiltroDoRegistro(it) {
+      if (!it) return;
+      const selConv = document.getElementById("codigo_convenio");
+      if (selConv.tomselect)
+        selConv.tomselect.setValue([String(it.codigo_convenio)]);
+      else
+        Array.from(selConv.options).forEach(
+          (o) => (o.selected = o.value === String(it.codigo_convenio)),
+        );
+
+      const okBanco = regDefinirSelect("consignataria", it.consignataria);
+      const okProduto = regDefinirSelect("produto", it.produto);
+      document.getElementById("competencia_inicio").value = it.competencia;
+      document.getElementById("competencia_fim").value = "";
+
+      if (!okBanco || !okProduto) {
+        elAviso.textContent =
+          "Atenção: banco ou produto deste upload não existe mais nas opções do filtro. Confira o painel de filtros.";
+        elAviso.style.display = "block";
+      }
+      fecharRegistro();
+      if (typeof carregarDashboard === "function") carregarDashboard();
+    }
+
+    sincronizarPainelRegistro();
+    // =============================================================================
+  </script>
+</html>

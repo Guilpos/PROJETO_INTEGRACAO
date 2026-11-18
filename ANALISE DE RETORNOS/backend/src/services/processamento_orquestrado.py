@@ -1,0 +1,183 @@
+import pandas as pd
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+from utils.file_readers import ler_arquivo_seguro, ler_arquivo_inseguro
+from utils.portais_convenios_lista import convenio_escolher, portal_escolhido
+from utils.formatters import classificar_status_acatamento, gerar_hash_registro
+from portais import Cip_portal
+
+def orquestrar_processamento(arquivos_lista: list,  convenio: str, banco: str, tipo_produto: str, competencia: str, db: Session):
+
+    # Vamos pegar o codigo que vem em convenio e descobrir qual o nome do convenio e por seguinte descobrir a qual portal ele pertence
+    # A sua lógica de escolha de portal!
+    nome_convenio = convenio_escolher()[convenio]
+
+    try:
+        print('Nome Convenio:', nome_convenio)
+    except KeyError:
+        print("Convenio não encontrado na lista de convenios.")
+
+    portal = portal_escolhido(nome_convenio)
+
+    # Consigx será o único portal que vai receber múltiplos arquivos, então vamos tratar ele de forma especial
+    if portal in ["CONSIGX", "VIABILIZE", "CONSIGORAPIDO", "CODATA"]:
+        lista_dfs = []
+    
+        # Processa cada arquivo que chegou na lista
+        for arq in arquivos_lista:
+            conteudo = arq["conteudo"]
+            nome_arquivo = arq["nome_arquivo"]
+            
+            # Lê o arquivo atual e transforma em DataFrame
+            df_temporario = ler_arquivo_seguro(conteudo_bytes=conteudo, nome_arquivo=nome_arquivo, convenio=convenio)
+            lista_dfs.append(df_temporario)
+            
+        # Junta os arquivos colocando o menor em cima e o maior embaixo
+        if portal == "CONSIGX":
+            # Ordena a lista de DataFrames do menor para o maior (em quantidade de linhas)
+            lista_dfs.sort(key=len)
+            df = pd.concat(lista_dfs, ignore_index=True)
+            df = df.drop_duplicates(subset=["ADE"], keep='first')
+        elif portal == "VIABILIZE":
+            # Ordena a lista de DataFrames do menor para o maior (em quantidade de linhas)
+            lista_dfs.sort(key=len)
+            df = pd.concat(lista_dfs, ignore_index=True)
+            df = df.drop_duplicates(subset=["Matrícula", "Rúbrica"], keep='first')
+        elif portal == "CODATA":
+            # Ordena a lista de DataFrames do menor para o maior (em quantidade de linhas)
+            lista_dfs.sort(key=len)
+            df = pd.concat(lista_dfs, ignore_index=True)
+            df = df.drop_duplicates(subset=["Matrícula", "NomeEntidade"], keep='first')
+        else:
+            df = pd.concat(lista_dfs, ignore_index=True)
+
+        
+    elif portal == "CIP":
+        # Em vez de uma lista, usamos um dicionário para saber quem é quem
+        dfs_processados = {"lancamento": None, "retorno": None}
+
+        # 1. ETAPA DE LEITURA INDIVIDUAL
+        for arq in arquivos_lista:
+            conteudo = arq["conteudo"]
+            nome_arquivo = arq["nome_arquivo"]
+            
+            # Lê o arquivo e traz o DF cru
+            df_temporario = ler_arquivo_inseguro(conteudo_bytes=conteudo, nome_arquivo=nome_arquivo, convenio=convenio)
+            
+            # Classifica o DataFrame baseado na extensão do arquivo
+            if nome_arquivo.lower().endswith('.xml'):
+                dfs_processados["retorno"] = df_temporario
+            elif nome_arquivo.lower().endswith(('.xlsx', '.xls')):
+                dfs_processados["lancamento"] = df_temporario
+
+        # 2. ETAPA DE CRUZAMENTO (Se ambos os arquivos existirem)
+        if dfs_processados["lancamento"] is not None and dfs_processados["retorno"] is not None:
+            # Chama a função de cruzamento passando os dois arquivos juntos!
+            df = Cip_portal.processar_portal_cip(df_bruto_1=dfs_processados["lancamento"], df_bruto_2=dfs_processados["retorno"], convenio=convenio, portal=portal)
+            
+        else:
+            raise ValueError("Faltam arquivos! É necessário subir tanto o XLSX de lançamento quanto o XML de retorno.")
+
+    elif portal not in ["CONSIGX", "VIABILIZE", "CIP"] and len(arquivos_lista) > 1:
+        # Se houver mais de um arquivo e o portal não for CONSIGX vamos lançar um erro
+        raise ValueError("Apenas um arquivo pode ser enviado para este portal.")
+    else:
+        # Se for apenas um arquivo, pegamos o primeiro da lista
+        conteudo = arquivos_lista[0]["conteudo"]
+        nome_arquivo = arquivos_lista[0]["nome_arquivo"]
+
+        # 1. Leitura e Limpeza (A mágica acontece lá nos seus módulos base_portal e Consigfacil_portal)
+        df = ler_arquivo_seguro(conteudo_bytes=conteudo, nome_arquivo=nome_arquivo, convenio=convenio)
+
+        if df is None:
+            raise ValueError(f"Falha na extração: A função de leitura retornou vazio para o arquivo '{nome_arquivo}'. Verifique a regra do layout do portal.")
+    
+    # 2. Injeção das dimensões da interface
+    df['codigo_convenio'] = convenio
+    df['consignataria'] = banco.upper().strip()
+    df['produto'] = tipo_produto.upper().strip()
+    df['competencia'] = competencia 
+    
+    # 3. Log no historico_uploads
+    query_historico = text("""
+        INSERT INTO historico_uploads 
+        (codigo_convenio, consignataria, produto, competencia, nome_arquivo_original, linhas_totais, status_processamento, usuario_upload)
+        VALUES (:conv, :banco, :prod, :comp, :nome, :linhas, 'PROCESSANDO', 'usuario_teste')
+    """)
+    
+    # 1º: Executamos a query e guardamos o resultado em uma variável
+    resultado = db.execute(query_historico, {"conv": convenio, "banco": banco, "prod": tipo_produto, "comp": competencia, "nome": nome_arquivo, "linhas": len(df)})
+    
+    # 2º: Pegamos o ID real que acabou de nascer, ANTES de comitar
+    id_upload = resultado.lastrowid
+    
+    # 3º: Agora sim, comitamos e fechamos a transação com segurança
+    db.commit()
+    
+    df['id_arquivo_origem'] = id_upload
+    
+    # =================================================================
+    # 4. ALINHAMENTO DE COLUNAS PARA O BANCO DE DADOS
+    # Pegamos as colunas já limpas pelo seu Consigfacil_portal.py e 
+    # as renomeamos para o padrão exato da tabela fato_retornos
+    # =================================================================
+    df = df.rename(columns={
+        'Matricula_formatada': 'matricula',
+        'cpf_formatado': 'cpf',
+        'Valor_lancado': 'valor_lancado',
+        'Crítica': 'texto_critica_original', 
+        'Valor_descontado': 'valor_acatado'
+    })
+    
+
+    # Imprime no terminal a lista exata de colunas que o Pandas encontrou
+    print("COLUNAS ENCONTRADAS NO ARQUIVO:", df.columns.tolist(), '\n')
+    print(df.dtypes, '\n')
+    
+    # Como as colunas já estão com os nomes corretos e em float, 
+    # apenas rodamos o classificador de status
+    df['status_acatamento'] = classificar_status_acatamento(df)
+
+    # =================================================================
+    # ATIVAÇÃO DA PROTEÇÃO ANTI-DUPLICIDADE
+    # =================================================================
+    df['hash_registro'] = gerar_hash_registro(df)
+    
+    # Removemos colunas antigas/sujas que vieram do portal para não dar erro no banco
+    # Manteremos apenas as colunas que de fato existem na tabela do TiDB
+    colunas_banco = [
+        'matricula', 'cpf', 'valor_lancado', 'texto_critica_original', 
+        'valor_acatado', 'codigo_convenio', 'consignataria', 'produto', 
+        'competencia', 'id_arquivo_origem', 'status_acatamento'
+    ]
+    df_para_banco = df[colunas_banco].copy()
+    
+    try:
+        # 5. Gravação no Banco
+        df_para_banco.to_sql(name='fato_retornos', con=db.get_bind(), if_exists='append', index=False)
+        
+        db.execute(text("UPDATE historico_uploads SET status_processamento = 'CONCLUIDO' WHERE id = :id"), {"id": id_upload})
+        db.commit()
+
+        # REGISTRO DE UPLOADS: nos portais com vários arquivos por envio (CONSIGX, VIABILIZE, CIP...),
+        # a linha principal acima guarda só UM nome. Gravamos os demais para que a tela
+        # "Registro de Uploads" mostre todos. Falha aqui é só cosmética e NÃO desfaz o upload.
+        try:
+            outros_arquivos = [a["nome_arquivo"] for a in arquivos_lista if a["nome_arquivo"] != nome_arquivo]
+            for nome_extra in outros_arquivos:
+                db.execute(text("""
+                    INSERT INTO historico_uploads
+                    (codigo_convenio, consignataria, produto, competencia, nome_arquivo_original, linhas_totais, status_processamento, usuario_upload)
+                    VALUES (:conv, :banco, :prod, :comp, :nome, 0, 'CONCLUIDO', 'usuario_teste')
+                """), {"conv": convenio, "banco": banco, "prod": tipo_produto, "comp": competencia, "nome": nome_extra})
+            db.commit()
+        except Exception as e_reg:
+            db.rollback()
+            print(f"Aviso: não foi possível registrar os demais arquivos no histórico: {e_reg}")
+        
+    except Exception as e:
+        db.execute(text("UPDATE historico_uploads SET status_processamento = 'ERRO', log_erro = :erro WHERE id = :id"), {"erro": str(e), "id": id_upload})
+        db.commit()
+        raise e 
+    
+    return df_para_banco
