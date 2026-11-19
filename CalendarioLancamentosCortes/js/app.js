@@ -1,11 +1,7 @@
 // ============================================================
-// app.js — orquestração da interface (calendario.html)
+// app.js — orquestração da interface (VERSÃO REAL — Supabase)
 // ------------------------------------------------------------
-// Funciona em dois modos:
-//   - USAR_MOCK = true  -> usa dados-mock.js (localStorage), sem
-//                          login e sem Supabase (modo atual de teste).
-//   - USAR_MOCK = false -> usa Supabase real (auth.js + calendario.js
-//                          originais).
+// Sem mock. Sessão via auth.js (token passado pelo app do colega).
 // ============================================================
 
 let abaAtiva = 'lancamentos';
@@ -14,30 +10,33 @@ let abaAtiva = 'lancamentos';
 // Inicialização
 // ------------------------------------------------------------------
 (async function init() {
-    // 1. Autenticação / sessão (apenas no modo real)
-    if (!window.USAR_MOCK) {
-        const contexto = await inicializarSessao();
-        if (!contexto) {
-            mostrarSemSessao();
-            return;
-        }
-        perfilAtual = contexto.perfil;
+    // 1. Recupera a sessão (via auth.js)
+    const contexto = await inicializarSessao();
+    if (!contexto) {
+        mostrarSemSessao();
+        return;
+    }
+    perfilAtual = contexto.perfil;
 
-        if (!podeEditar(perfilAtual)) {
-            document.getElementById('btn-nova-competencia').disabled = true;
-            document.getElementById('btn-upload').disabled = true;
-        }
-    } else {
-        // modo teste: todo mundo edita (simulação)
-        perfilAtual = { tipo_usuario: 'master', cargo: 'supervisor', nome_completo: 'TESTE', ativo: true };
+    // 2. Busca o perfil do usuário (tipo_usuario/cargo) na tabela usuarios
+    const user = await obterUsuario();
+    if (user && user.id) {
+        perfilAtual = await obterPerfil(user.id);
     }
 
-    // 2. Data de hoje no título
+    // 3. Se não pode editar, desabilita ações de escrita
+    if (perfilAtual && !podeEditar(perfilAtual)) {
+        document.getElementById('btn-nova-competencia').disabled = true;
+        document.getElementById('btn-upload').disabled = true;
+        document.getElementById('btn-novo-convenio').disabled = true;
+    }
+
+    // 4. Data de hoje no título
     const agora = new Date();
     document.getElementById('data-hoje').textContent =
         `${String(agora.getDate()).padStart(2,'0')}/${String(agora.getMonth()+1).padStart(2,'0')}/${agora.getFullYear()}`;
 
-    // 3. Carrega responsáveis e competências
+    // 5. Carrega responsáveis e competências
     await carregarResponsaveis();
     const competencias = await carregarCompetencias();
     const seletor = document.getElementById('seletor-competencia');
@@ -58,19 +57,19 @@ let abaAtiva = 'lancamentos';
         seletor.value = competenciaSelecionada;
     }
 
-    // 4. Renderiza
+    // 6. Renderiza
     await renderizar();
 
-    // 5. Eventos
+    // 7. Eventos
     bindEventos();
 })();
 
 // ------------------------------------------------------------------
-// Aviso de sessão ausente (somente modo real)
+// Aviso de sessão ausente
 // ------------------------------------------------------------------
 function mostrarSemSessao() {
     const aviso = document.getElementById('aviso-pendencias');
-    aviso.textContent = 'Você não está autenticado. Volte ao app do colega para entrar.';
+    aviso.textContent = 'Você não está autenticado. Faça login no app do colega.';
     aviso.style.display = 'block';
     document.getElementById('tabela-pendencias').innerHTML = '';
     document.getElementById('tabela-base').innerHTML = '';
@@ -103,8 +102,7 @@ function renderizarPendencias() {
     else linhas = filtroPeriodoLancamento(linhasBase);
 
     const aviso = document.getElementById('aviso-pendencias');
-    const hoje = new Date();
-    const hojeTxt = `${String(hoje.getDate()).padStart(2,'0')}/${String(hoje.getMonth()+1).padStart(2,'0')}/${hoje.getFullYear()}`;
+    const hojeTxt = formatarDataBR(hojeBR());
 
     if (linhas.length === 0) {
         aviso.textContent = `Nenhum convênio nesta categoria para hoje (${hojeTxt}).`;
@@ -205,36 +203,24 @@ function renderizarBase() {
 function selectResponsavel(campo, linha, lista) {
     const idAtual = linha[campo] || '';
     let opcoes = `<option value="">—</option>`;
-    lista.forEach(u => {
+    (lista || []).forEach(u => {
         const sel = (u.id === idAtual) ? 'selected' : '';
         opcoes += `<option value="${u.id}" ${sel}>${escapar(u.nome_completo)}</option>`;
     });
-    const disabled = podeEditar(perfilAtual) ? '' : 'disabled';
+    const disabled = (perfilAtual && podeEditar(perfilAtual)) ? '' : 'disabled';
     return `<select data-campo="${campo}" data-id="${linha.id}" ${disabled}>${opcoes}</select>`;
 }
 
 // ------------------------------------------------------------------
-// Salvar edição célula a célula (diff cirúrgico)
+// Salvar edição célula a célula (diff cirúrgico no Supabase)
 // ------------------------------------------------------------------
 async function salvarCelula(el) {
-    if (!podeEditar(perfilAtual)) return;
+    if (perfilAtual && !podeEditar(perfilAtual)) return;
 
     const id = el.dataset.id;
     const campo = el.dataset.campo;
     const valor = el.value;
 
-    if (window.USAR_MOCK) {
-        // modo teste: grava no localStorage
-        let valorFinal = valor;
-        if (campo === 'data_de_corte' || campo === 'data_de_lancamento') {
-            valorFinal = valor || null;
-        }
-        await salvarCelulaMock(Number(id), campo, valorFinal);
-        await renderizar();
-        return;
-    }
-
-    // modo real: Supabase
     const payload = {};
     if (campo === 'data_de_corte' || campo === 'data_de_lancamento') {
         payload[campo] = valor ? `${valor}T00:00:00` : null;
@@ -258,7 +244,7 @@ async function salvarCelula(el) {
 // Nova competência
 // ------------------------------------------------------------------
 async function criarCompetencia() {
-    if (!podeEditar(perfilAtual)) return;
+    if (perfilAtual && !podeEditar(perfilAtual)) return;
 
     const base = competenciaSelecionada || competenciaAtual();
     const nova = proximaCompetencia(base);
@@ -268,40 +254,90 @@ async function criarCompetencia() {
     );
     if (!confirmar) return;
 
-    let total;
-    if (window.USAR_MOCK) {
-        total = await criarCompetenciaMock(nova);
-    } else {
-        const { data, error } = await supabase.rpc('criar_competencia', { nova_competencia: nova });
-        if (error) { alert('Erro: ' + error.message); return; }
-        total = data;
-    }
+    const { data, error } = await supabase.rpc('criar_competencia', { nova_competencia: nova });
+    if (error) { alert('Erro: ' + error.message); return; }
 
-    alert(`Competência ${competenciaLabel(nova)} criada com ${total} linhas.`);
+    alert(`Competência ${competenciaLabel(nova)} criada com ${data} linhas.`);
     window.location.reload();
+}
+
+// ------------------------------------------------------------------
+// + Convênio (adicionar manualmente, sem planilha)
+// ------------------------------------------------------------------
+async function abrirModalNovoConvenio() {
+    if (perfilAtual && !podeEditar(perfilAtual)) return;
+
+    const nome = prompt('Nome do convênio:');
+    if (nome === null) return;
+    const sistema = prompt('Código/Sistema (opcional):') || '';
+
+    const { data, error } = await supabase.rpc('criar_convenio', {
+        p_nome: nome.trim(),
+        p_sistema: sistema.trim() || null,
+        p_competencia: competenciaSelecionada
+    });
+
+    if (error) { alert('Erro: ' + error.message); return; }
+
+    alert(`Convênio "${data.nome}" adicionado.`);
+    await renderizar();
+}
+
+// ------------------------------------------------------------------
+// Baixar planilha da competência atual (.xlsx, fallback .csv)
+// ------------------------------------------------------------------
+async function baixarPlanilha() {
+    if (!competenciaSelecionada) { alert('Selecione uma competência antes.'); return; }
+
+    const dados = linhasBase.map(l => ({
+        'Convênio': l.convenio_nome,
+        'Sistema': l.sistema || '',
+        'Data de Corte': l.data_de_corte ? formatarDataBR(l.data_de_corte) : '',
+        'Data de Lançamento': l.data_de_lancamento ? formatarDataBR(l.data_de_lancamento) : '',
+        'Responsável': l.lancador_nome || '',
+        'Validação': l.validador_nome || ''
+    }));
+
+    if (!dados.length) { alert('Nenhuma linha para exportar.'); return; }
+
+    if (typeof XLSX !== 'undefined') {
+        const ws = XLSX.utils.json_to_sheet(dados);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, competenciaSelecionada);
+        XLSX.writeFile(wb, `calendario_${competenciaSelecionada}.xlsx`);
+    } else {
+        baixarCSV(dados);
+    }
+}
+
+function baixarCSV(dados) {
+    if (!dados.length) return;
+    const cabecalhos = Object.keys(dados[0]);
+    const linhas = [
+        cabecalhos.join(';'),
+        ...dados.map(obj => cabecalhos.map(c => {
+            const v = obj[c] == null ? '' : String(obj[c]);
+            return v.includes(';') ? `"${v}"` : v;
+        }).join(';'))
+    ];
+    const blob = new Blob(['\ufeff' + linhas.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `calendario_${competenciaSelecionada}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
 }
 
 // ------------------------------------------------------------------
 // Upload de planilha
 // ------------------------------------------------------------------
 async function acionarUpload(arquivo) {
-    if (!podeEditar(perfilAtual)) return;
+    if (perfilAtual && !podeEditar(perfilAtual)) return;
     if (!competenciaSelecionada) { alert('Selecione ou crie uma competência antes.'); return; }
 
     const linhasBrutas = await lerPlanilha(arquivo);
     if (!linhasBrutas.length) { alert('Planilha vazia ou sem dados.'); return; }
-
-    if (window.USAR_MOCK) {
-        const linhas = normalizarLinhas(linhasBrutas).map(l => ({
-            ...l,
-            data_corte: normalizarData(l.data_corte),
-            data_lancamento: normalizarData(l.data_lancamento)
-        }));
-        await importarPlanilhaMock(competenciaSelecionada, linhas);
-        alert(`Importação concluída: ${linhas.length} linha(s) processada(s).`);
-        await renderizar();
-        return;
-    }
 
     const resultado = await importarPlanilha(competenciaSelecionada, linhasBrutas);
     if (!resultado.ok) { alert('Erro: ' + resultado.erro); return; }
@@ -330,6 +366,8 @@ function bindEventos() {
     });
 
     document.getElementById('btn-nova-competencia').addEventListener('click', criarCompetencia);
+    document.getElementById('btn-novo-convenio').addEventListener('click', abrirModalNovoConvenio);
+    document.getElementById('btn-baixar-planilha').addEventListener('click', baixarPlanilha);
 
     document.getElementById('btn-upload').addEventListener('click', () => {
         document.getElementById('input-upload').click();
@@ -347,21 +385,6 @@ function bindEventos() {
     });
 
     document.getElementById('busca-base').addEventListener('input', renderizarBase);
-
-    // botão Sair: no modo mock, apenas limpa o localStorage e recarrega
-    const btnLogout = document.getElementById('btn-logout');
-    if (btnLogout) {
-        btnLogout.addEventListener('click', () => {
-            if (window.USAR_MOCK) {
-                if (confirm('Limpar todos os dados de teste?')) {
-                    localStorage.removeItem(CHAVE_DADOS);
-                    window.location.reload();
-                }
-            } else {
-                logout();
-            }
-        });
-    }
 }
 
 // ------------------------------------------------------------------

@@ -1,108 +1,143 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Calendário de Lançamentos (Teste)</title>
-    <link rel="stylesheet" href="css/estilo.css">
-</head>
-<body>
-<div class="container-app">
-    <!-- Topo -->
-    <div class="topbar">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Calendário de Lançamentos</title>
+    <link rel="stylesheet" href="css/estilo.css" />
+  </head>
+  <body>
+    <div class="container-app">
+      <!-- Topo -->
+      <div class="topbar">
         <h1>Pendências de Hoje (<span id="data-hoje"></span>)</h1>
-        <div style="display:flex; gap:.5rem; align-items:center;">
-            <select id="seletor-competencia" title="Competência"></select>
-            <button class="btn btn-primary" id="btn-nova-competencia">Nova competência</button>
-            <input type="file" id="input-upload" accept=".xlsx,.xls,.csv" class="btn" hidden>
-            <button class="btn" id="btn-upload">Importar planilha</button>
-            <button class="btn btn-vermelho" id="btn-logout">Limpar teste</button>
+        <div
+          style="
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+            flex-wrap: wrap;
+          "
+        >
+          <select id="seletor-competencia" title="Competência"></select>
+          <button class="btn btn-primary" id="btn-nova-competencia">
+            Nova competência
+          </button>
+          <input
+            type="file"
+            id="input-upload"
+            accept=".xlsx,.xls,.csv"
+            class="btn"
+            hidden
+          />
+          <button class="btn" id="btn-upload">Importar planilha</button>
+          <button class="btn" id="btn-baixar-planilha">Baixar planilha</button>
+          <button class="btn" id="btn-novo-convenio">+ Convênio</button>
         </div>
-    </div>
+      </div>
 
-    <!-- Abas de pendências -->
-    <div class="tabs" id="abas-pendencias">
-        <div class="tab ativa" data-tab="lancamentos">🚀 Lançamentos de Hoje</div>
+      <!-- Abas de pendências -->
+      <div class="tabs" id="abas-pendencias">
+        <div class="tab ativa" data-tab="lancamentos">
+          🚀 Lançamentos de Hoje
+        </div>
         <div class="tab" data-tab="cortes">✂️ Cortes de Hoje</div>
         <div class="tab" data-tab="periodo">⚠️ Em Período de Lançamento</div>
+      </div>
+
+      <!-- Aviso -->
+      <div class="aviso-verde" id="aviso-pendencias"></div>
+
+      <!-- Grade de pendências -->
+      <div class="card-dark">
+        <div style="max-height: 320px; overflow: auto">
+          <table class="tabela-dark" id="tabela-pendencias">
+            <thead>
+              <tr>
+                <th>Convênio</th>
+                <th>Data de Corte</th>
+                <th>Data de Lançamento</th>
+                <th>Responsável</th>
+                <th>Validação</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Alertas -->
+      <div class="card-dark" id="card-alertas">
+        <div
+          style="
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+          "
+        >
+          <strong id="titulo-alertas">🔔 Alertas (0)</strong>
+          <button class="btn" id="btn-toggle-alertas" style="font-size: 0.8rem">
+            Mostrar
+          </button>
+        </div>
+        <div id="lista-alertas" style="display: none; margin-top: 0.5rem"></div>
+      </div>
+
+      <!-- Base da competência -->
+      <div class="card-dark">
+        <div
+          style="
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
+          "
+        >
+          <h2 style="font-size: 1.1rem; margin: 0">
+            Base de Lançamentos — <span id="label-competencia"></span>
+          </h2>
+          <input
+            type="text"
+            id="busca-base"
+            placeholder="Buscar convênio..."
+            style="min-width: 240px"
+          />
+        </div>
+        <div style="max-height: 60vh; overflow: auto">
+          <table class="tabela-dark" id="tabela-base">
+            <thead>
+              <tr>
+                <th>Convênio</th>
+                <th>Sistema</th>
+                <th>Data de Corte</th>
+                <th>Data de Lançamento</th>
+                <th>Lançador (Responsável)</th>
+                <th>Validador</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
-    <!-- Aviso -->
-    <div class="aviso-verde" id="aviso-pendencias"></div>
-
-    <!-- Grade de pendências -->
-    <div class="card-dark">
-        <div style="max-height: 320px; overflow:auto;">
-            <table class="tabela-dark" id="tabela-pendencias">
-                <thead>
-                    <tr>
-                        <th>Convênio</th>
-                        <th>Data de Corte</th>
-                        <th>Data de Lançamento</th>
-                        <th>Responsável</th>
-                        <th>Validação</th>
-                    </tr>
-                </thead>
-                <tbody></tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- Alertas -->
-    <div class="card-dark" id="card-alertas">
-        <div style="display:flex; align-items:center; justify-content:space-between;">
-            <strong id="titulo-alertas">🔔 Alertas (0)</strong>
-            <button class="btn" id="btn-toggle-alertas" style="font-size:.8rem;">Mostrar</button>
-        </div>
-        <div id="lista-alertas" style="display:none; margin-top:.5rem;"></div>
-    </div>
-
-    <!-- Base da competência -->
-    <div class="card-dark">
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:.5rem;">
-            <h2 style="font-size:1.1rem; margin:0;">Base de Lançamentos — <span id="label-competencia"></span></h2>
-            <input type="text" id="busca-base" placeholder="Buscar convênio..." style="min-width:240px;">
-        </div>
-        <div style="max-height: 60vh; overflow:auto;">
-            <table class="tabela-dark" id="tabela-base">
-                <thead>
-                    <tr>
-                        <th>Convênio</th>
-                        <th>Sistema</th>
-                        <th>Data de Corte</th>
-                        <th>Data de Lançamento</th>
-                        <th>Lançador (Responsável)</th>
-                        <th>Validador</th>
-                    </tr>
-                </thead>
-                <tbody></tbody>
-            </table>
-        </div>
-    </div>
-</div>
-
-<!-- ============================================================
-     MODO TESTE — Scripts locais, sem Supabase, sem internet.
-     Ordem importa:
-       1. helpers.js     -> utilitárias (datas, rótulo, permissão)
-       2. calendario.js  -> lógica de negócio (alertas, filtros)
-       3. dados-mock.js  -> fonte de dados em localStorage
-       4. xlsx (local)   -> SheetJS para upload de planilha
-       5. upload.js      -> leitura da planilha
-       6. app.js         -> orquestração da interface
+    <!-- ============================================================
+     VERSÃO REAL (Supabase)
+     Ordem dos scripts:
+       1. supabase-js (cliente Supabase, baixado)
+       2. supabase.js  (client + helpers de data)
+       3. auth.js      (sessão via token # do app do colega)
+       4. calendario.js(lógica de negócio)
+       5. xlsx         (SheetJS, baixado, para upload/download)
+       6. upload.js    (leitura de planilha)
+       7. app.js       (orquestração)
      ============================================================ -->
-<script src="js/helpers.js"></script>
-<script src="js/calendario.js"></script>
-<script src="js/dados-mock.js"></script>
-<script src="js/xlsx.full.min.js"></script>
-<script src="js/upload.js"></script>
-<script src="js/app.js"></script>
-
-<!-- ============================================================
-     O arquivo "js/xlsx.full.min.js" precisa ser baixado manualmente
-     da biblioteca SheetJS e colocado na pasta js/:
-       https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js
-     Ele só é necessário para a função "Importar planilha".
-     ============================================================ -->
-</body>
+    <script src="js/supabase-js.js"></script>
+    <script src="js/supabase.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/calendario.js"></script>
+    <script src="js/xlsx.full.min.js"></script>
+    <script src="js/upload.js"></script>
+    <script src="js/app.js"></script>
+  </body>
 </html>
