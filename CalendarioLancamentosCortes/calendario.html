@@ -103,16 +103,63 @@
             style="min-width: 240px"
           />
         </div>
+        <select id="filtro-campo-base">
+          <option value="todos">Todos os campos</option>
+          <option value="convenio_nome">Convênio</option>
+          <option value="sistema">Sistema</option>
+          <option value="lancador_nome">Lançador (Responsável)</option>
+          <option value="validador_nome">Validador</option>
+          <option value="data_de_corte">Data de Corte</option>
+          <option value="data_de_lancamento">Data de Lançamento</option>
+        </select>
         <div style="max-height: 60vh; overflow: auto">
           <table class="tabela-dark" id="tabela-base">
             <thead>
               <tr>
-                <th>Convênio</th>
-                <th>Sistema</th>
-                <th>Data de Corte</th>
-                <th>Data de Lançamento</th>
-                <th>Lançador (Responsável)</th>
-                <th>Validador</th>
+                <th
+                  data-sort="convenio_nome"
+                  data-label="Convênio"
+                  style="cursor: pointer"
+                >
+                  Convênio
+                </th>
+                <th
+                  data-sort="sistema"
+                  data-label="Sistema"
+                  style="cursor: pointer"
+                >
+                  Sistema
+                </th>
+                <th
+                  data-sort="data_de_corte"
+                  data-label="Data de Corte"
+                  style="cursor: pointer"
+                >
+                  Data de Corte
+                </th>
+                <th
+                  data-sort="data_de_lancamento"
+                  data-label="Data de Lançamento"
+                  style="cursor: pointer"
+                >
+                  Data de Lançamento
+                </th>
+                <th
+                  data-sort="lancador_nome"
+                  data-label="Lançador (Responsável)"
+                  style="cursor: pointer"
+                >
+                  Lançador (Responsável)
+                </th>
+                <th
+                  data-sort="validador_nome"
+                  data-label="Validador"
+                  style="cursor: pointer"
+                >
+                  Validador
+                </th>
+                <th></th>
+                <!-- coluna do botão excluir -->
               </tr>
             </thead>
             <tbody></tbody>
