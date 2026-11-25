@@ -3,43 +3,114 @@
 // ------------------------------------------------------------
 // Sessão via auth.js (token # do app do colega).
 // Fonte: view vw_calendario_completo + clienteSupabase.
-// Recursos: edição célula a célula, excluir linha, ordenação.
+// Recursos: edição célula a célula, excluir, ordenar, filtro
+// por coluna e REGISTRO DE ATIVIDADES (log_atividades).
 // ============================================================
 
+const SISTEMA_ATUAL = "Agenda de Lançamento";
+
 let abaAtiva = "lancamentos";
+
+// ------------------------------------------------------------------
+// Registra uma atividade no log (chama o RPC registrar_atividade)
+// ------------------------------------------------------------------
+async function registrarLog(atividade, opcoes = {}) {
+  try {
+    await clienteSupabase.rpc("registrar_atividade", {
+      p_sistema: SISTEMA_ATUAL,
+      p_atividade: atividade,
+      p_alvo_tipo: opcoes.alvoTipo || null,
+      p_alvo_descricao: opcoes.alvo || null,
+      p_competencia: opcoes.competencia || competenciaSelecionada || null,
+      p_detalhe: opcoes.detalhe || {},
+    });
+  } catch (e) {
+    // Log nunca deve travar a ação principal
+    console.error("Falha ao registrar atividade:", e);
+  }
+}
 
 // ------------------------------------------------------------------
 // Inicialização
 // ------------------------------------------------------------------
 (async function init() {
-  // 1. Recupera a sessão (via auth.js)
-  const contexto = await inicializarSessao();
-  if (!contexto) {
+  try {
+    await inicializarSessao();
+  } catch (e) {
+    console.error("Falha ao inicializar sessão:", e);
+  }
+
+  perfilAtual = await obterSessaoPerfil();
+  if (!perfilAtual) {
     mostrarSemSessao();
     return;
   }
-  perfilAtual = contexto.perfil;
 
-  // 2. Busca o perfil do usuário na tabela usuarios
-  const user = await obterUsuario();
-  if (user && user.id) {
-    perfilAtual = await obterPerfil(user.id);
+  // ------------------------------------------------------------------
+  // Busca o perfil COMPLETO do usuário logado na tabela 'usuarios'.
+  // Retorna { id, nome_completo, email, cargo, tipo_usuario, ativo } ou null.
+  // ------------------------------------------------------------------
+  async function obterSessaoPerfil() {
+    try {
+      const userId =
+        typeof userIdAtual !== "undefined" && userIdAtual ? userIdAtual : null;
+
+      if (!userId) {
+        // fallback: tenta decodificar o JWT para achar o sub
+        const sessao = await obterSessao();
+        if (!sessao) return null;
+
+        const { data, error } = await clienteSupabase.auth.getUser();
+        if (error || !data || !data.user) return null;
+
+        const id = data.user.id;
+        const { data: perfil } = await clienteSupabase
+          .from("usuarios")
+          .select("id, nome_completo, email, cargo, tipo_usuario, ativo")
+          .eq("id", id)
+          .maybeSingle();
+
+        return perfil || null;
+      }
+
+      const { data: perfil, error } = await clienteSupabase
+        .from("usuarios")
+        .select("id, nome_completo, email, cargo, tipo_usuario, ativo")
+        .eq("id", userId)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Erro ao buscar perfil:", error);
+        return null;
+      }
+
+      return perfil || null;
+    } catch (e) {
+      console.error("Falha ao obter perfil:", e);
+      return null;
+    }
   }
 
-  // 3. Se não pode editar, desabilita ações de escrita
-  const podeEd = perfilAtual && podeEditar(perfilAtual);
-  if (perfilAtual && !podeEd) {
-    document.getElementById("btn-nova-competencia").disabled = true;
-    document.getElementById("btn-upload").disabled = true;
-    document.getElementById("btn-novo-convenio").disabled = true;
+  const podeEd = podeEditar(perfilAtual);
+  if (!podeEd) {
+    const b1 = document.getElementById("btn-nova-competencia");
+    const b2 = document.getElementById("btn-upload");
+    const b3 = document.getElementById("btn-novo-convenio");
+    if (b1) b1.disabled = true;
+    if (b2) b2.disabled = true;
+    if (b3) b3.disabled = true;
   }
 
-  // 4. Data de hoje no título
   const agora = new Date();
-  document.getElementById("data-hoje").textContent =
-    `${String(agora.getDate()).padStart(2, "0")}/${String(agora.getMonth() + 1).padStart(2, "0")}/${agora.getFullYear()}`;
+  const hojeTitulo =
+    String(agora.getDate()).padStart(2, "0") +
+    "/" +
+    String(agora.getMonth() + 1).padStart(2, "0") +
+    "/" +
+    agora.getFullYear();
+  const elHoje = document.getElementById("data-hoje");
+  if (elHoje) elHoje.textContent = hojeTitulo;
 
-  // 5. Carrega responsáveis e competências
   await carregarResponsaveis();
   const competencias = await carregarCompetencias();
   await recarregarSeletor(competencias);
@@ -47,30 +118,28 @@ let abaAtiva = "lancamentos";
     competenciaSelecionada = competencias[0];
   }
 
-  // 6. Renderiza
   await renderizar();
-
-  // 7. Eventos
   bindEventos();
 })();
 
-// ------------------------------------------------------------------
-// Aviso de sessão ausente
-// ------------------------------------------------------------------
 function mostrarSemSessao() {
   const aviso = document.getElementById("aviso-pendencias");
-  aviso.textContent = "Você não está autenticado. Faça login no app do colega.";
-  aviso.style.display = "block";
-  document.getElementById("tabela-pendencias").innerHTML = "";
-  document.getElementById("tabela-base").innerHTML = "";
-  document.getElementById("card-alertas").style.display = "none";
+  if (aviso) {
+    aviso.textContent =
+      "Você não está autenticado. Faça login no app do colega.";
+    aviso.style.display = "block";
+  }
+  const tp = document.getElementById("tabela-pendencias");
+  const tb = document.getElementById("tabela-base");
+  if (tp) tp.innerHTML = "";
+  if (tb) tb.innerHTML = "";
+  const card = document.getElementById("card-alertas");
+  if (card) card.style.display = "none";
 }
 
-// ------------------------------------------------------------------
-// (Re)monta o seletor de competências sem recarregar a página
-// ------------------------------------------------------------------
 async function recarregarSeletor(competencias) {
   const seletor = document.getElementById("seletor-competencia");
+  if (!seletor) return;
   seletor.innerHTML = "";
   if (!competencias || competencias.length === 0) {
     const opc = document.createElement("option");
@@ -88,42 +157,30 @@ async function recarregarSeletor(competencias) {
   seletor.value = competencias[0];
 }
 
-// ------------------------------------------------------------------
-// Renderização principal
-// ------------------------------------------------------------------
 async function renderizar() {
   if (!competenciaSelecionada) return;
+  const lbl = document.getElementById("label-competencia");
+  if (lbl) lbl.textContent = competenciaLabel(competenciaSelecionada);
 
-  document.getElementById("label-competencia").textContent = competenciaLabel(
-    competenciaSelecionada,
-  );
-
-  // Recarrega as linhas SEMPRE (garante dados frescos)
   linhasBase = await carregarLinhas(competenciaSelecionada);
 
-  // Cada seção é independente: um erro numa não trava as outras
   try {
     renderizarPendencias();
   } catch (e) {
-    console.error("Erro em renderizarPendencias:", e);
+    console.error("Pendências:", e);
   }
-
   try {
     renderizarAlertas();
   } catch (e) {
-    console.error("Erro em renderizarAlertas:", e);
+    console.error("Alertas:", e);
   }
-
   try {
     renderizarBase();
   } catch (e) {
-    console.error("Erro em renderizarBase:", e);
+    console.error("Base:", e);
   }
 }
 
-// ------------------------------------------------------------------
-// Grade de pendências (abas)
-// ------------------------------------------------------------------
 function renderizarPendencias() {
   let linhas;
   if (abaAtiva === "lancamentos") linhas = filtroLancamentosHoje(linhasBase);
@@ -131,19 +188,25 @@ function renderizarPendencias() {
   else linhas = filtroPeriodoLancamento(linhasBase);
 
   const aviso = document.getElementById("aviso-pendencias");
-
-  // Recalcula o "hoje" na hora (sem depender de valor capturado antes)
   const hojeTxt = formatarDataBR(hojeBR());
 
   if (linhas.length === 0) {
-    aviso.textContent = `Nenhum convênio nesta categoria para hoje (${hojeTxt}).`;
+    aviso.textContent =
+      "Nenhum convênio nesta categoria para hoje (" + hojeTxt + ").";
   } else {
     const rotulo = {
       lancamentos: "lançar",
       cortes: "que cortam",
       periodo: "em período de lançamento",
     }[abaAtiva];
-    aviso.textContent = `Atenção: Existem ${linhas.length} convênio(s) para ${rotulo} hoje (${hojeTxt})!`;
+    aviso.textContent =
+      "Atenção: Existem " +
+      linhas.length +
+      " convênio(s) para " +
+      rotulo +
+      " hoje (" +
+      hojeTxt +
+      ")!";
   }
   aviso.style.display = "block";
 
@@ -151,54 +214,65 @@ function renderizarPendencias() {
   tbody.innerHTML = "";
   linhas.forEach((l) => {
     const tr = document.createElement("tr");
-    tr.innerHTML = `
-            <td>${escapar(l.convenio_nome)}</td>
-            <td>${formatarDataBR(l.data_de_corte)}</td>
-            <td>${formatarDataBR(l.data_de_lancamento)}</td>
-            <td>${escapar(l.lancador_nome || "—")}</td>
-            <td>${escapar(l.validador_nome || "—")}</td>`;
+    tr.innerHTML =
+      "<td>" +
+      escapar(l.convenio_nome) +
+      "</td>" +
+      "<td>" +
+      formatarDataBR(l.data_de_corte) +
+      "</td>" +
+      "<td>" +
+      formatarDataBR(l.data_de_lancamento) +
+      "</td>" +
+      "<td>" +
+      escapar(l.lancador_nome || "—") +
+      "</td>" +
+      "<td>" +
+      escapar(l.validador_nome || "—") +
+      "</td>";
     tbody.appendChild(tr);
   });
 }
 
-// ------------------------------------------------------------------
-// Alertas (4 categorias, sobre linhas completas)
-// ------------------------------------------------------------------
 function renderizarAlertas() {
   const alertas = calcularAlertas(linhasBase);
   const total = totalAlertas(alertas);
-
-  document.getElementById("titulo-alertas").textContent =
-    `🔔 Alertas (${total})`;
+  const titulo = document.getElementById("titulo-alertas");
+  if (titulo) titulo.textContent = "\u{1F514} Alertas (" + total + ")";
 
   const lista = document.getElementById("lista-alertas");
+  if (!lista) return;
   lista.innerHTML = "";
-
   if (total === 0) {
     lista.innerHTML = '<div class="alerta-item">Sem alertas.</div>';
     return;
   }
-
-  function bloco(titulo, itens, formatador) {
+  function bloco(txt, itens, fmt) {
     if (itens.length === 0) return "";
-    let html = `<strong style="color:#ff7b72;">⚠️ ${titulo}</strong>`;
+    let h = '<strong style="color:#ff7b72;">\u26A0\uFE0F ' + txt + "</strong>";
     itens.forEach((it) => {
-      html += `<div class="alerta-item">• <strong>${escapar(it.convenio_nome)}</strong>: ${formatador(it)}</div>`;
+      h +=
+        '<div class="alerta-item">• <strong>' +
+        escapar(it.convenio_nome) +
+        "</strong>: " +
+        fmt(it) +
+        "</div>";
     });
-    return html;
+    return h;
   }
-
   lista.innerHTML = [
     bloco(
       "Lançamento no mesmo dia ou depois do corte",
       alertas.invasao,
       (it) =>
-        `${formatarDataBR(it.data_de_lancamento)} ≥ ${formatarDataBR(it.data_de_corte)}`,
+        formatarDataBR(it.data_de_lancamento) +
+        " \u2265 " +
+        formatarDataBR(it.data_de_corte),
     ),
     bloco(
       "Data de Lançamento em fim de semana",
       alertas.fimDeSemana,
-      (it) => `${formatarDataBR(it.data_de_lancamento)} (${it.diaSemana})`,
+      (it) => formatarDataBR(it.data_de_lancamento) + " (" + it.diaSemana + ")",
     ),
     bloco(
       "Data de Lançamento com mais de 30 dias de distância",
@@ -213,19 +287,14 @@ function renderizarAlertas() {
   ].join("");
 }
 
-// ------------------------------------------------------------------
-// Base da competência (planilha editável célula a célula + ordenação)
-// ------------------------------------------------------------------
 function renderizarBase() {
-  const termo = (document.getElementById("busca-base").value || "")
-    .trim()
-    .toLowerCase();
-  const campoFiltro = document.getElementById("filtro-campo-base").value;
+  const inputBusca = document.getElementById("busca-base");
+  const termo = (inputBusca ? inputBusca.value : "").trim().toLowerCase();
+  const selCampo = document.getElementById("filtro-campo-base");
+  const campoFiltro = selCampo ? selCampo.value : "todos";
 
   let linhasFiltradas = linhasBase.filter((l) => {
     if (!termo) return true;
-
-    // Busca em todos os campos
     if (campoFiltro === "todos") {
       const campos = [
         l.convenio_nome,
@@ -237,23 +306,18 @@ function renderizarBase() {
       ];
       return campos.some((c) => c && String(c).toLowerCase().includes(termo));
     }
-
-    // Busca num campo específico
     const valor = l[campoFiltro];
     if (valor === null || valor === undefined) return false;
-
-    // Para datas, busca no texto formatado também (dd/mm/yyyy OU yyyy-mm-dd)
     if (
       campoFiltro === "data_de_corte" ||
       campoFiltro === "data_de_lancamento"
     ) {
-      const iso = String(valor).slice(0, 10); // 2026-11-25
-      const br = formatarDataBR(valor); // 25/11/2026
+      const iso = String(valor).slice(0, 10);
+      const br = formatarDataBR(valor);
       return (
         iso.toLowerCase().includes(termo) || br.toLowerCase().includes(termo)
       );
     }
-
     return String(valor).toLowerCase().includes(termo);
   });
 
@@ -267,38 +331,51 @@ function renderizarBase() {
 
   const tbody = document.querySelector("#tabela-base tbody");
   tbody.innerHTML = "";
-
   linhasFiltradas.forEach((l) => {
     const tr = document.createElement("tr");
     const naoLanca = ehNaoLanca(l);
-
-    tr.innerHTML = `
-            <td>${escapar(l.convenio_nome)}${naoLanca ? ' <span class="badge-nao-lanca">(não lança)</span>' : ""}</td>
-            <td>${escapar(l.sistema || "—")}</td>
-            <td><input type="date" data-campo="data_de_corte" data-id="${l.id}" value="${l.data_de_corte ? String(l.data_de_corte).slice(0, 10) : ""}"></td>
-            <td><input type="date" data-campo="data_de_lancamento" data-id="${l.id}" value="${l.data_de_lancamento ? String(l.data_de_lancamento).slice(0, 10) : ""}"></td>
-            <td>${selectResponsavel("lancador_id", l, lançadores)}</td>
-            <td>${selectResponsavel("validador_id", l, validadores)}</td>
-            <td><button class="btn-excluir" data-id="${l.id}" data-nome="${escapar(l.convenio_nome)}" title="Excluir linha desta competência">🗑</button></td>`;
-
+    tr.innerHTML =
+      "<td>" +
+      escapar(l.convenio_nome) +
+      (naoLanca ? ' <span class="badge-nao-lanca">(não lança)</span>' : "") +
+      "</td>" +
+      "<td>" +
+      escapar(l.sistema || "—") +
+      "</td>" +
+      '<td><input type="date" data-campo="data_de_corte" data-id="' +
+      l.id +
+      '" value="' +
+      (l.data_de_corte ? String(l.data_de_corte).slice(0, 10) : "") +
+      '"></td>' +
+      '<td><input type="date" data-campo="data_de_lancamento" data-id="' +
+      l.id +
+      '" value="' +
+      (l.data_de_lancamento ? String(l.data_de_lancamento).slice(0, 10) : "") +
+      '"></td>' +
+      "<td>" +
+      selectResponsavel("lancador_id", l, lançadores) +
+      "</td>" +
+      "<td>" +
+      selectResponsavel("validador_id", l, validadores) +
+      "</td>" +
+      '<td><button class="btn-excluir" data-id="' +
+      l.id +
+      '" data-nome="' +
+      escapar(l.convenio_nome) +
+      '" title="Excluir linha desta competência">🗑</button></td>';
     tbody.appendChild(tr);
   });
 
-  // events dos inputs/selects
   tbody
     .querySelectorAll("input[data-campo], select[data-campo]")
     .forEach((el) => {
       el.addEventListener("change", (e) => salvarCelula(e.target));
     });
-
-  // events dos botões de excluir
   tbody.querySelectorAll(".btn-excluir").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      excluirLinha(btn.dataset.id, btn.dataset.nome);
-    });
+    btn.addEventListener("click", () =>
+      excluirLinha(btn.dataset.id, btn.dataset.nome),
+    );
   });
-
-  // atualiza indicadores de ordenação nos cabeçalhos
   renderizarIndicadoresOrdenacao();
 }
 
@@ -314,17 +391,34 @@ function renderizarIndicadoresOrdenacao() {
 
 function selectResponsavel(campo, linha, lista) {
   const idAtual = linha[campo] || "";
-  let opcoes = `<option value="">—</option>`;
+  let opcoes = '<option value="">—</option>';
   (lista || []).forEach((u) => {
     const sel = u.id === idAtual ? "selected" : "";
-    opcoes += `<option value="${u.id}" ${sel}>${escapar(u.nome_completo)}</option>`;
+    opcoes +=
+      '<option value="' +
+      u.id +
+      '" ' +
+      sel +
+      ">" +
+      escapar(u.nome_completo) +
+      "</option>";
   });
   const disabled = perfilAtual && podeEditar(perfilAtual) ? "" : "disabled";
-  return `<select data-campo="${campo}" data-id="${linha.id}" ${disabled}>${opcoes}</select>`;
+  return (
+    '<select data-campo="' +
+    campo +
+    '" data-id="' +
+    linha.id +
+    '" ' +
+    disabled +
+    ">" +
+    opcoes +
+    "</select>"
+  );
 }
 
 // ------------------------------------------------------------------
-// Salvar edição célula a célula (grava DATE puro, sem hora)
+// Salvar edição célula a célula (grava DATE puro + registra log)
 // ------------------------------------------------------------------
 async function salvarCelula(el) {
   if (perfilAtual && !podeEditar(perfilAtual)) return;
@@ -333,9 +427,12 @@ async function salvarCelula(el) {
   const campo = el.dataset.campo;
   const valor = el.value;
 
+  // busca a linha original para montar o "antes" no log
+  const linhaAntes = linhasBase.find((l) => String(l.id) === String(id)) || {};
+  const valorAntes = linhaAntes[campo] || "";
+
   const payload = {};
   if (campo === "data_de_corte" || campo === "data_de_lancamento") {
-    // Colunas DATE: grava apenas 'YYYY-MM-DD' puro (sem T00:00:00)
     payload[campo] = valor || null;
   } else {
     payload[campo] = valor || null;
@@ -350,6 +447,21 @@ async function salvarCelula(el) {
     alert("Erro ao salvar: " + error.message);
     return;
   }
+
+  // ---- REGISTRO DE ATIVIDADE ----
+  const rotulos = {
+    data_de_corte: "Alterou data de corte",
+    data_de_lancamento: "Alterou data de lançamento",
+    lancador_id: "Alterou responsável (lançador)",
+    validador_id: "Alterou responsável (validador)",
+  };
+  const atividade = rotulos[campo] || "Alterou campo";
+  await registrarLog(atividade, {
+    alvoTipo: "convenio",
+    alvo: linhaAntes.convenio_nome || null,
+    detalhe: { campo: campo, de: valorAntes, para: valor },
+  });
+
   await renderizar();
 }
 
@@ -360,8 +472,10 @@ async function excluirLinha(id, nomeConvenio) {
   if (perfilAtual && !podeEditar(perfilAtual)) return;
 
   const confirmar = window.confirm(
-    `Excluir a linha do convênio "${nomeConvenio}" desta competência?\n` +
-      `(O convênio em si NÃO será apagado — apenas esta linha.)`,
+    'Excluir a linha do convênio "' +
+      nomeConvenio +
+      '" desta competência?\n' +
+      "(O convênio em si NÃO será apagado — apenas esta linha.)",
   );
   if (!confirmar) return;
 
@@ -375,11 +489,17 @@ async function excluirLinha(id, nomeConvenio) {
     return;
   }
 
+  await registrarLog("Removeu convênio da competência", {
+    alvoTipo: "convenio",
+    alvo: nomeConvenio || null,
+    detalhe: { linha_id: id },
+  });
+
   await renderizar();
 }
 
 // ------------------------------------------------------------------
-// Nova competência (sem reload — mantém a sessão no iframe)
+// Nova competência (sem reload + registro de log)
 // ------------------------------------------------------------------
 async function criarCompetencia() {
   if (perfilAtual && !podeEditar(perfilAtual)) return;
@@ -387,8 +507,10 @@ async function criarCompetencia() {
   const base = competenciaSelecionada || competenciaAtual();
   const nova = proximaCompetencia(base);
   const confirmar = window.confirm(
-    `Criar a competência ${competenciaLabel(nova)}?\n` +
-      `Serão criadas as linhas de todos os convênios ativos, em branco.`,
+    "Criar a competência " +
+      competenciaLabel(nova) +
+      "?\n" +
+      "Serão criadas as linhas de todos os convênios ativos, em branco.",
   );
   if (!confirmar) return;
 
@@ -400,12 +522,19 @@ async function criarCompetencia() {
     return;
   }
 
+  await registrarLog("Criou nova competência", {
+    alvoTipo: "competencia",
+    alvo: competenciaLabel(nova),
+    competencia: nova,
+    detalhe: { linhas: data },
+  });
+
   const competencias = await carregarCompetencias();
   await recarregarSeletor(competencias);
   competenciaSelecionada = nova;
   document.getElementById("seletor-competencia").value = nova;
   await renderizar();
-  alert(`Competência ${competenciaLabel(nova)} criada.`);
+  alert("Competência " + competenciaLabel(nova) + " criada.");
 }
 
 // ------------------------------------------------------------------
@@ -439,12 +568,18 @@ async function abrirModalNovoConvenio() {
     return;
   }
 
-  alert(`Convênio "${data.nome}" adicionado.`);
+  await registrarLog("Adicionou convênio", {
+    alvoTipo: "convenio",
+    alvo: data.nome,
+    detalhe: { sistema: sistema || null },
+  });
+
+  alert('Convênio "' + data.nome + '" adicionado.');
   await renderizar();
 }
 
 // ------------------------------------------------------------------
-// Baixar planilha da competência atual (.xlsx, fallback .csv)
+// Baixar planilha da competência atual (registra log)
 // ------------------------------------------------------------------
 async function baixarPlanilha() {
   if (!competenciaSelecionada) {
@@ -472,22 +607,27 @@ async function baixarPlanilha() {
     const ws = XLSX.utils.json_to_sheet(dados);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, competenciaSelecionada);
-    XLSX.writeFile(wb, `calendario_${competenciaSelecionada}.xlsx`);
+    XLSX.writeFile(wb, "calendario_" + competenciaSelecionada + ".xlsx");
   } else {
     baixarCSV(dados);
   }
+
+  await registrarLog("Baixou planilha", {
+    alvoTipo: "planilha",
+    alvo: competenciaLabel(competenciaSelecionada),
+  });
 }
 
 function baixarCSV(dados) {
   if (!dados.length) return;
-  const cabecalhos = Object.keys(dados[0]);
+  const cab = Object.keys(dados[0]);
   const linhas = [
-    cabecalhos.join(";"),
+    cab.join(";"),
     ...dados.map((obj) =>
-      cabecalhos
+      cab
         .map((c) => {
           const v = obj[c] == null ? "" : String(obj[c]);
-          return v.includes(";") ? `"${v}"` : v;
+          return v.includes(";") ? '"' + v + '"' : v;
         })
         .join(";"),
     ),
@@ -498,13 +638,13 @@ function baixarCSV(dados) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `calendario_${competenciaSelecionada}.csv`;
+  a.download = "calendario_" + competenciaSelecionada + ".csv";
   a.click();
   URL.revokeObjectURL(url);
 }
 
 // ------------------------------------------------------------------
-// Upload de planilha
+// Upload de planilha (registra log)
 // ------------------------------------------------------------------
 async function acionarUpload(arquivo) {
   if (perfilAtual && !podeEditar(perfilAtual)) return;
@@ -529,8 +669,19 @@ async function acionarUpload(arquivo) {
   }
 
   const criados = resultado.resultados.filter((r) => r.criado_convenio).length;
+
+  await registrarLog("Importou planilha", {
+    alvoTipo: "planilha",
+    alvo: competenciaLabel(competenciaSelecionada),
+    detalhe: { linhas: resultado.resultados.length, novos_convenios: criados },
+  });
+
   alert(
-    `Importação concluída: ${resultado.resultados.length} linha(s) processada(s), ${criados} convênio(s) novo(s) criado(s).`,
+    "Importação concluída: " +
+      resultado.resultados.length +
+      " linha(s) processada(s), " +
+      criados +
+      " convênio(s) novo(s) criado(s).",
   );
   await renderizar();
 }
@@ -550,15 +701,15 @@ function bindEventos() {
     });
   });
 
-  document
-    .getElementById("seletor-competencia")
-    .addEventListener("change", async (e) => {
+  const seletor = document.getElementById("seletor-competencia");
+  if (seletor) {
+    seletor.addEventListener("change", async (e) => {
       competenciaSelecionada = e.target.value;
       ordenacaoBase = { campo: null, direcao: 1 };
       await renderizar();
     });
+  }
 
-  // Ordenação por cabeçalho clicável
   document.querySelectorAll("#tabela-base th[data-sort]").forEach((th) => {
     th.addEventListener("click", () => {
       const campo = th.dataset.sort;
@@ -572,40 +723,34 @@ function bindEventos() {
     });
   });
 
-  document
-    .getElementById("btn-nova-competencia")
-    .addEventListener("click", criarCompetencia);
-  document
-    .getElementById("btn-novo-convenio")
-    .addEventListener("click", abrirModalNovoConvenio);
-  document
-    .getElementById("btn-baixar-planilha")
-    .addEventListener("click", baixarPlanilha);
+  const fCampo = document.getElementById("filtro-campo-base");
+  if (fCampo) fCampo.addEventListener("change", renderizarBase);
 
-  document.getElementById("btn-upload").addEventListener("click", () => {
-    document.getElementById("input-upload").click();
-  });
-  document.getElementById("input-upload").addEventListener("change", (e) => {
-    if (e.target.files.length) acionarUpload(e.target.files[0]);
-  });
+  const bNova = document.getElementById("btn-nova-competencia");
+  const bNovo = document.getElementById("btn-novo-convenio");
+  const bBaixar = document.getElementById("btn-baixar-planilha");
+  const bUpload = document.getElementById("btn-upload");
+  const inUpload = document.getElementById("input-upload");
+  const bToggle = document.getElementById("btn-toggle-alertas");
+  const busca = document.getElementById("busca-base");
 
-  document
-    .getElementById("btn-toggle-alertas")
-    .addEventListener("click", () => {
+  if (bNova) bNova.addEventListener("click", criarCompetencia);
+  if (bNovo) bNovo.addEventListener("click", abrirModalNovoConvenio);
+  if (bBaixar) bBaixar.addEventListener("click", baixarPlanilha);
+  if (bUpload)
+    bUpload.addEventListener("click", () => inUpload && inUpload.click());
+  if (inUpload)
+    inUpload.addEventListener("change", (e) => {
+      if (e.target.files.length) acionarUpload(e.target.files[0]);
+    });
+  if (bToggle)
+    bToggle.addEventListener("click", () => {
       const lista = document.getElementById("lista-alertas");
-      const btn = document.getElementById("btn-toggle-alertas");
       const visivel = lista.style.display !== "none";
       lista.style.display = visivel ? "none" : "block";
-      btn.textContent = visivel ? "Mostrar" : "Ocultar";
+      bToggle.textContent = visivel ? "Mostrar" : "Ocultar";
     });
-
-  document
-    .getElementById("busca-base")
-    .addEventListener("input", renderizarBase);
-
-  document
-    .getElementById("filtro-campo-base")
-    .addEventListener("change", renderizarBase);
+  if (busca) busca.addEventListener("input", renderizarBase);
 }
 
 // ------------------------------------------------------------------
