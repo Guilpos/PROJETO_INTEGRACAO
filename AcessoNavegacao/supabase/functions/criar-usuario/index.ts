@@ -110,7 +110,7 @@ Deno.serve(async (req: Request) => {
         tipo_usuario: tipoUsuario,
         cargo,
         ativo: true,
-      }, { onConflict: "id", ignoreDuplicates: true });
+      }, { onConflict: "id", ignoreDuplicates: false });
 
     if (insertError) {
       const { error: deleteError } = await adminClient.auth.admin.deleteUser(cadastro.user.id);

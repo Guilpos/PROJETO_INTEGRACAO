@@ -189,4 +189,19 @@ window.alternarStatusUsuario = async function (userId, novoStatus) {
     exibirAlertaUsuarios(novoStatus ? 'Usuário ativado!' : 'Usuário desativado!');
     carregarListaUsuarios();
   }
+
+  const { data: { session } } = await supabaseClient.auth.getSession();
+
+  const { error: erroCadastro } = await supabaseClient.functions.invoke('criar-usuario', {
+  headers: {
+    Authorization: `Bearer ${session?.access_token}`
+  },
+  body: {
+    nome_completo: nome,
+    email,
+    senha,
+    tipo_usuario: tipoUsuario,
+    cargo
+  }
+  });
 };
