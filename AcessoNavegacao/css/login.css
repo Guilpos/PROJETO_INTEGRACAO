@@ -1,4 +1,4 @@
-﻿/* ===== CORES E CONFIGURAÇÕES GERAIS ===== */
+/* ===== CORES E CONFIGURAÇÕES GERAIS ===== */
 :root {
   --ink: #161a24;
   --ink-soft: #6d7280;
@@ -127,10 +127,10 @@ body {
 
 .visual-content h1 {
   margin: 0 0 18px;
-  max-width: 440px;
-  font-size: clamp(2.5rem, 4vw, 4.2rem);
-  line-height: 0.98;
-  letter-spacing: -0.055em;
+  max-width: 480px;
+  font-size: clamp(1.9rem, 2.8vw, 2.9rem);
+  line-height: 1.08;
+  letter-spacing: -0.04em;
 }
 
 .visual-content h1 span {
